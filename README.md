@@ -2,6 +2,13 @@
 ---
 A simple JavaScript plugin for reading [Unreal Tournament](https://en.wikipedia.org/wiki/Unreal_Tournament) package data.
 
+**N.B.** this plugin is still in development and some features (such as parsing embedded music) are not yet available.
+
+## Demo
+Visit https://bunnytrack.net/package-explorer/ to see this plugin in use.
+
+---
+
 ## Usage
 Create an instance of UTPackage by passing an `ArrayBuffer` as the only argument:
 
