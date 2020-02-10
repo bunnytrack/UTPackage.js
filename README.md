@@ -318,7 +318,7 @@ Returns an array of objects, each containing details of the package's sound obje
 ]
 ```
 
-This can then be used to obtain the audio data. An example using the [`Blob`](https://developer.mozilla.org/en-US/docs/Web/API/Blob) object is shown belown:
+This can then be used to obtain the audio data. An example using the [`Blob`](https://developer.mozilla.org/en-US/docs/Web/API/Blob) object is shown below:
 
 ```js
 fileReader.onload = function() {
