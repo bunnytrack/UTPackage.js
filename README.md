@@ -141,7 +141,7 @@ getScreenshot(function callback) : void
 ```
 Asynchronously extracts a map file's screenshot texture, passing it as a parameter in the provided `callback` function.
 
-In order for UT to be able to display a map screenshot in-game, the screenshot must be named `Screenshot` and saved in the `MyLevel` pseudo-package; some mappers, however, have not named the texture correctly or have erroneously set the `Screenshot` property to a texture within a different package.
+In order for UT to be able to display a map screenshot in-game, the screenshot must be named `Screenshot` and saved in the `MyLevel` pseudo-package; some mappers, however, have not named the texture correctly (e.g. BT-SlaughterCB) or have erroneously set the `Screenshot` property to a texture within a different package.
 
 This function attempts to extract the screenshot even if it is set incorrectly, although it is not always possible to do so (e.g. when the texture is part of an external package).
 
@@ -171,7 +171,7 @@ Returns an array of dependencies (i.e. other packages) required for this package
 
 The return value is an array of objects. Each object will always have a `name` and `default` property (`string` and `bool` respectively) and may also contain `ext` and `type` properties (both `string`).
 
-**Example output for CTF-BT-Mesablanca**
+**Example output for BT-Mesablanca**
 ```js
 [
     // A default texture package dependency
@@ -204,7 +204,7 @@ This function is essentially the same as `getDependencies` with the return value
 
 When `ignoreCore` is `true`, several core UT files which are used by the vast majority of packages (such as `Core.u` and `Engine.u`) are excluded from the return value.
 
-**Example output for CTF-BT-Mesablanca**
+**Example output for BT-Mesablanca**
 ```js
 {
     "length": 30,
@@ -239,7 +239,7 @@ Returns an array of export table object details for textures embedded within the
 
 **N.B.** a _package_ object is not the same as a JavaScript object. A package object can be thought of a chunk of data within the file, usually containing a list of properties followed by the data itself.
 
-**Example output for CTF-BT-BehindSunrise**
+**Example output for BT-BehindSunrise**
 ```js
 [
     {
@@ -302,7 +302,7 @@ getSounds() : array
 ```
 Returns an array of objects, each containing details of the package's sound objects.
 
-**Example output for CTF-BT-BehindSunrise**
+**Example output for BT-BehindSunrise**
 ```js
 [
     {
@@ -358,7 +358,7 @@ getTextBufferObjects() : array
 ```
 Returns an array of text buffer objects. A text buffer is usually an embedded UnrealScript file.
 
-**Example output for CTF-BT-BehindSunrise**
+**Example output for BT-BehindSunrise**
 ```js
 [
     {
@@ -383,7 +383,7 @@ getTextBufferData(object textBufferObject) : object
 ```
 Returns an object containing information about the given text buffer object.
 
-**Example output for CTF-BT-BehindSunrise**
+**Example output for BT-BehindSunrise**
 ```js
 // Script contents truncated for brevity
 {
