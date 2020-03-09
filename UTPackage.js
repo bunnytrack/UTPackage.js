@@ -33,6 +33,7 @@ window.UTPackage = function(arrayBuffer) {
 		umx : "Music",
 		unr : "Map",
 		utx : "Texture",
+		uxx : "Cache",
 	}
 
 	this.defaultPackages = {
@@ -317,6 +318,38 @@ window.UTPackage = function(arrayBuffer) {
 		"xutfx"          : "utx",
 	}
 
+	this.polyFlags = {
+		"Invisible"        : 0x00000001,
+		"Masked"           : 0x00000002,
+		"Translucent"      : 0x00000004,
+		"NotSolid"         : 0x00000008,
+		"Environment"      : 0x00000010,
+		"ForceViewZone"    : 0x00000010,
+		"Semisolid"        : 0x00000020,
+		"Modulated"        : 0x00000040,
+		"FakeBackdrop"     : 0x00000080,
+		"TwoSided"         : 0x00000100,
+		"AutoUPan"         : 0x00000200,
+		"AutoVPan"         : 0x00000400,
+		"NoSmooth"         : 0x00000800,
+		"BigWavy"          : 0x00001000,
+		"SpecialPoly"      : 0x00001000,
+		"SmallWavy"        : 0x00002000,
+		"Flat"             : 0x00004000,
+		"LowShadowDetail"  : 0x00008000,
+		"NoMerge"          : 0x00010000,
+		"CloudWavy"        : 0x00020000,
+		"DirtyShadows"     : 0x00040000,
+		"BrightCorners"    : 0x00080000,
+		"SpecialLit"       : 0x00100000,
+		"Gouraud"          : 0x00200000,
+		"NoBoundRejection" : 0x00200000,
+		"Unlit"            : 0x00400000,
+		"HighShadowDetail" : 0x00800000,
+		"Portal"           : 0x04000000,
+		"Mirrored"         : 0x08000000
+	}
+
 	this.index = function(dataArray, offset = 0) {
 		let l = 5;
 		let output = dataArray[offset];
@@ -380,7 +413,7 @@ window.UTPackage = function(arrayBuffer) {
 
 	this.getHeader = function() {
 		const header = {
-			signature       : self.dataView.getUint32(0,  true).toString(16),
+			signature       : self.dataView.getUint32(0,  true).toString(16).toUpperCase(),
 			version         : self.dataView.getUint32(4,  true),
 			package_flags   : self.dataView.getUint32(8,  true),
 			name_count      : self.dataView.getUint32(12, true),
@@ -395,7 +428,10 @@ window.UTPackage = function(arrayBuffer) {
 			header.heritage_count  = self.dataView.getUint32(36, true);
 			header.heritage_offset = self.dataView.getUint32(40, true);
 		} else {
-			header.guid = self.dataView.getBigUint64(44, true).toString(16) + self.dataView.getBigUint64(36, true).toString(16);
+			header.guid = (self.dataView.getUint32(36, true).toString(16)
+				+ self.dataView.getUint32(40, true).toString(16)
+				+ self.dataView.getUint32(44, true).toString(16)
+				+ self.dataView.getUint32(48, true).toString(16)).toUpperCase();
 			header.generation_count = self.dataView.getUint32(52, true);
 			header.generations = [];
 
@@ -517,36 +553,23 @@ window.UTPackage = function(arrayBuffer) {
 
 	this.getImportTable = function() {
 		const importTable = [];
-		const importData  = [];
 
-		const importCount = self.header.import_count;
 		let offset = self.header.import_offset;
 
-		// Push import table bytes into array for processing
-		for (let i = 0; i < importCount * 19; i++) {
-			if (offset >= self.dataView.byteLength) break;
-
-			importData.push(self.dataView.getUint8(offset));
-			offset++;
-		}
-
-		// Iterate through import table data for each entry
-		let lastMainIndex = 0;
-
-		for (let i = 0; i < importCount; i++) {
+		for (let i = 0; i < self.header.import_count; i++) {
 			const entry = {};
 
-			const classPackageIndex = self.index(importData, lastMainIndex);
-			lastMainIndex += classPackageIndex.length;
+			const classPackageIndex = self.index(self.packageData, offset);
+			offset += classPackageIndex.length;
 
-			const classNameIndex = self.index(importData, lastMainIndex);
-			lastMainIndex += classNameIndex.length;
+			const classNameIndex = self.index(self.packageData, offset);
+			offset += classNameIndex.length;
 
-			const packageIndex = self.dword(importData, lastMainIndex);
-			lastMainIndex += 4;
+			const packageIndex = self.dword(self.packageData, offset);
+			offset += 4;
 
-			const objectNameIndex = self.index(importData, lastMainIndex);
-			lastMainIndex += objectNameIndex.length;
+			const objectNameIndex = self.index(self.packageData, offset);
+			offset += objectNameIndex.length;
 
 			// Assign this import table entry's values
 			entry.class_package_index = classPackageIndex.value;
@@ -751,13 +774,13 @@ window.UTPackage = function(arrayBuffer) {
 						break;
 
 						case "vector":
-							const vectorX = self.float32(self.dword(self.packageData, offset));
+							const vectorX = self.dataView.getFloat32(offset, true);
 							offset += 4;
 
-							const vectorY = self.float32(self.dword(self.packageData, offset));
+							const vectorY = self.dataView.getFloat32(offset, true);
 							offset += 4;
 
-							const vectorZ = self.float32(self.dword(self.packageData, offset));
+							const vectorZ = self.dataView.getFloat32(offset, true);
 							offset += 4;
 
 							prop.value = {
@@ -877,7 +900,7 @@ window.UTPackage = function(arrayBuffer) {
 		if (index < 0) {
 			return {
 				table  : "import",
-				object : self.importTable[-index - 1],
+				object : self.importTable[~index],
 			}
 		}
 
@@ -895,6 +918,16 @@ window.UTPackage = function(arrayBuffer) {
 		}
 
 		return null;
+	}
+
+	this.getObjectPropertiesFromName = function(objectName) {
+		const object = self.getObjectByName(objectName);
+
+		if (object) {
+			return self.getObjectProperties(object, object.object_flags);
+		}
+
+		return {};
 	}
 
 	this.getObjectsByType = function(objectType) {
@@ -1075,7 +1108,166 @@ window.UTPackage = function(arrayBuffer) {
 		return new Uint8Array(arrayBuffer.slice(audioOffset, audioOffset + audioSize));
 	}
 
-	this.getPalette = function(paletteObject) {
+	this.getLightHsl = function(lightObject) {
+		// Default UT values: 0, 255, 64
+		const hsl = {
+			h : 0,
+			s : 100,
+			l : 25
+		}
+
+		const properties = self.getObjectProperties(lightObject, lightObject.object_flags);
+
+		for (const prop of properties.props) {
+			switch (prop.name.toLowerCase()) {
+				// Degree in colour wheel
+				case "lighthue":
+					hsl.h = Math.round(prop.value / 256 * 360);
+				break;
+
+				// UT saturation is opposite of HSL, i.e. 0% = full colour
+				case "lightsaturation":
+					hsl.s = 100 - Math.round(prop.value / 256 * 100);
+				break;
+
+				case "volumebrightness":
+					hsl.l = Math.round(prop.value / 256 * 100);
+				break;
+
+				default:
+				break;
+			}
+		}
+
+		return hsl;
+	}
+
+	this.getPolyInfo = function(polyObject) {
+		const polyInfo = [];
+		const properties = self.getObjectProperties(polyObject, polyObject.object_flags);
+
+		let offset = properties.offset;
+
+		const polyCount = self.dataView.getUint32(offset, true);
+		offset += 4;
+
+		// why is this dword repeated?
+		offset += 4;
+
+		const polyProperties = [
+			"origin",
+			"normal",
+			"texture_u",
+			"texture_v",
+		];
+
+		for (let i = 0; i < polyCount; i++) {
+			const poly = {};
+
+			const vertexCount = self.dataView.getUint8(offset);
+			offset++;
+
+			// Get poly properties first, then [vertexCount] vertices thereafter
+			for (const prop of polyProperties) {
+				poly[prop] = {};
+
+				poly[prop].x = self.dataView.getFloat32(offset, true);
+				offset += 4;
+
+				poly[prop].y = self.dataView.getFloat32(offset, true);
+				offset += 4;
+
+				poly[prop].z = self.dataView.getFloat32(offset, true);
+				offset += 4;
+			}
+
+			// Get vertices
+			poly.vertices = [];
+
+			for (let i = 0; i < vertexCount; i++) {
+				const vertex_x = self.dataView.getFloat32(offset, true);
+				offset += 4;
+
+				const vertex_y = self.dataView.getFloat32(offset, true);
+				offset += 4;
+
+				const vertex_z = self.dataView.getFloat32(offset, true);
+				offset += 4;
+
+				poly.vertices.push({
+					x: vertex_x,
+					y: vertex_y,
+					z: vertex_z,
+				})
+			}
+
+			// Get poly "attributes"
+			const flags = self.dataView.getUint32(offset, true);
+			poly.flags = self.getPolyFlags(flags);
+			offset += 4;
+
+			const polyActor = self.index(self.packageData, offset);
+			poly.actor = polyActor.value;
+			offset += polyActor.length;
+
+			const polyTexture = self.index(self.packageData, offset);
+			const polyTextureObject = self.getObject(polyTexture.value);
+
+			if (polyTextureObject) {
+				poly.texture = package.nameTable[polyTextureObject.object.object_name_index];
+			}
+
+			offset += polyTexture.length;
+
+			const polyItemName = self.index(self.packageData, offset);
+			poly.item_name = package.nameTable[polyItemName.value];
+			offset += polyItemName.length;
+
+			const polyLink = self.index(self.packageData, offset);
+			poly.link = polyLink.value;
+			offset += polyLink.length;
+
+			const brushPoly = self.index(self.packageData, offset);
+			poly.brush_poly = brushPoly.value;
+			offset += brushPoly.length;
+
+			let panU = self.word(self.packageData, offset);
+
+			if (panU > 0x8000) panU |= 0xFFFF0000;
+
+			poly.pan_u = panU;
+			offset += 2;
+
+			let panV = self.word(self.packageData, offset);
+
+			if (panV > 0x8000) panV |= 0xFFFF0000;
+
+			poly.pan_v = panV;
+			offset += 2;
+
+			polyInfo.push(poly);
+		}
+
+		return polyInfo;
+	}
+
+	this.getPolyFlags = function(flags) {
+		const polyFlags = [];
+
+		for (const flagName in self.polyFlags) {
+			const flagVal = self.polyFlags[flagName];
+
+			if (flagVal > flags) break;
+
+			if ((flags & flagVal) !== 0) {
+				polyFlags.push(flagName);
+			}
+		}
+
+		return polyFlags;
+	}
+
+	this.getPaletteData = function(paletteObject) {
 		// Get palette properties to find out where the actual data begins
 		const paletteProperties = self.getObjectProperties(paletteObject);
 
@@ -1103,27 +1295,56 @@ window.UTPackage = function(arrayBuffer) {
 		}
 	}
 
-	this.getTextureData = function(textureObject) {
+	this.getPaletteObjectFromTexture = function(textureObject) {
 		const textureProperties = self.getObjectProperties(textureObject, textureObject.object_flags);
-
-		// Find this texture's palette property then get the corresponding palette object
-		let palette;
 
 		for (const prop of textureProperties.props) {
 			if (prop.name.toLowerCase() === "palette") {
-				palette = prop;
-				break;
+				return self.getObject(prop.value);
 			}
 		}
 
-		// Get palette object from appropriate table
-		if (palette) {
-			const paletteObject = self.getObject(palette.value);
+		return null;
+	}
 
-			if (paletteObject !== null && paletteObject.table === "export") {
-				palette = self.getPalette(paletteObject.object);
+	this.getPaletteCanvas = function(textureObject, callback) {
+		const paletteObject = self.getPaletteObjectFromTexture(textureObject);
+		const paletteData   = self.getPaletteData(paletteObject.object);
+
+		const canvas  = document.createElement("canvas");
+		const context = canvas.getContext("2d");
+
+		canvas.width  = 16;
+		canvas.height = 16;
+
+		const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+
+		createImageBitmap(imageData).then(function(imageBitmap) {
+			let i = 0;
+
+			for (const pixel of paletteData.colours) {
+				imageData.data[i++] = pixel.r;
+				imageData.data[i++] = pixel.g;
+				imageData.data[i++] = pixel.b;
+				imageData.data[i++] = pixel.a;
 			}
-		}
+
+			context.putImageData(imageData, 0, 0);
+
+			callback(canvas, paletteData);
+		})
+
+		return paletteData;
+	}
+
+	this.getTextureData = function(textureObject) {
+		const textureProperties = self.getObjectProperties(textureObject, textureObject.object_flags);
+
+		// Find this texture's palette object
+		const paletteObject = self.getPaletteObjectFromTexture(textureObject);
+
+		// Get palette colour data
+		const paletteData = self.getPaletteData(paletteObject.object);
 
 		// Texture data begins after the properties; use the offset returned from getObjectProperties()
 		let offset = textureProperties.offset;
@@ -1134,8 +1355,10 @@ window.UTPackage = function(arrayBuffer) {
 		const textureData = {};
 
 		for (let i = 0; i < mipMapCount; i++) {
-			const widthOffset = self.dword(self.packageData, offset);
-			offset += 4;
+			if (self.header.version >= 63) {
+				const widthOffset = self.dword(self.packageData, offset);
+				offset += 4;
+			}
 
 			const mipMapSize = self.index(self.packageData, offset);
 			offset += mipMapSize.length;
@@ -1150,7 +1373,7 @@ window.UTPackage = function(arrayBuffer) {
 			const textureHeight = self.dword(self.packageData, offset);
 			offset += 4;
 
-			textureData.palette        = palette;
+			textureData.palette        = paletteData;
 			textureData.mip_map_count  = mipMapCount;
 			textureData.mip_map_size   = mipMapSize;
 			textureData.texture_width  = textureWidth;
