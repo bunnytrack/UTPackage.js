@@ -1,5 +1,7 @@
 # UTPackage.js
 ---
+***Note:** this is now slightly out of date and will be updated properly at… some point. See demo site below for current usage.*
+
 A simple JavaScript plugin for reading [Unreal Tournament](https://en.wikipedia.org/wiki/Unreal_Tournament) package data.
 
 Based almost entirely on Feralidragon's [PHP UPackage](https://ut99.org/viewtopic.php?t=4796), this is essentially a JavaScript rewrite with some extra features for use in web applications (e.g. Canvas and audio elements for textures and sounds).
