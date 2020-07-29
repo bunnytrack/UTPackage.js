@@ -1,12 +1,1148 @@
-window.UTPackage = function(arrayBuffer) {
+window.UTReader = function(arrayBuffer) {
 	/**
-	 * Reference to parent class; used to access global variables (e.g. import/export tables)
+	 * Globally accessible DataView object of this file
 	 */
-	const self = this;
-
 	this.dataView = new DataView(arrayBuffer);
 
-	this.packageData = new Uint8Array(arrayBuffer);
+	/**
+	 * Reference to UTReader object; used to access global variables and functions
+	 */
+	const reader = this;
+
+	/**
+	 * UT file signatures
+	 */
+	const SIGNATURE_UT   = 0x9E2A83C1;
+	const SIGNATURE_UMOD = 0x9FE3C5A3;
+	const SIGNATURE_UZ   = [1234, 5678];
+
+	/**
+	 * Byte-related helper functions
+	 */
+	this.offset = 0;
+
+	this.seek = function(offset) {
+		return reader.offset = offset;
+	}
+
+	this.getInt8 = function() {
+		const value = reader.dataView.getInt8(reader.offset);
+		reader.offset += 1;
+		return value;
+	}
+
+	this.getUint8 = function() {
+		const value = reader.dataView.getUint8(reader.offset);
+		reader.offset += 1;
+		return value;
+	}
+
+	this.getInt16 = function() {
+		const value = reader.dataView.getInt16(reader.offset, true);
+		reader.offset += 2;
+		return value;
+	}
+
+	this.getUint16 = function() {
+		const value = reader.dataView.getUint16(reader.offset, true);
+		reader.offset += 2;
+		return value;
+	}
+
+	this.getInt32 = function() {
+		const value = reader.dataView.getInt32(reader.offset, true);
+		reader.offset += 4;
+		return value;
+	}
+
+	this.getUint32 = function() {
+		const value = reader.dataView.getUint32(reader.offset, true);
+		reader.offset += 4;
+		return value;
+	}
+
+	this.getFloat32 = function() {
+		const value = reader.dataView.getFloat32(reader.offset, true);
+		reader.offset += 4;
+		return value;
+	}
+
+	this.getInt64 = function() {
+		const value = reader.dataView.getBigInt64(reader.offset, true);
+		reader.offset += 8;
+		return value;
+	}
+
+	this.getUint64 = function() {
+		const value = reader.dataView.getBigUint64(reader.offset, true);
+		reader.offset += 8;
+		return value;
+	}
+
+	this.getFloat64 = function() {
+		const value = reader.dataView.getFloat64(reader.offset, true);
+		reader.offset += 8;
+		return value;
+	}
+
+	this.getCompactIndex = function() {
+		let length = 5;
+		let value  = reader.dataView.getUint8(reader.offset);
+
+		if ((value & 0x40) === 0) {
+			length = 1;
+		} else {
+			for (let i = 1; i < 4; i++) {
+				if ((reader.dataView.getUint8(reader.offset + i) & 0x80) === 0) {
+					length = i + 1;
+					break;
+				}
+			}
+		}
+
+		const signed = (value & 0x80) === 0x80;
+
+		value &= 0x3F;
+
+		for (let i = 1; i < Math.min(length, 4); i++) {
+			value |= (reader.dataView.getUint8(reader.offset + i) & 0x7F) << (6 + ((i - 1) * 7));
+		}
+
+		if (length === 5) {
+			value |= (reader.dataView.getUint8(reader.offset + 4) & 0x1F) << 27;
+		}
+
+		reader.offset += length;
+
+		return signed ? -value : value;
+	}
+
+	// Gets text where the first byte specifies the size
+	this.getSizedText = function(offsetAdjust) {
+		const size  = reader.getUint8();
+		const bytes = reader.dataView.buffer.slice(reader.offset, reader.offset + size - 1);
+
+		reader.offset += size;
+
+		if (offsetAdjust !== undefined) reader.offset += offsetAdjust;
+
+		return reader.decodeText(bytes);
+	}
+
+	this.getCompactIndexSizedText = function() {
+		const size  = reader.getCompactIndex();
+		const bytes = reader.dataView.buffer.slice(reader.offset, reader.offset + size - 1);
+
+		reader.offset += size;
+
+		return reader.decodeText(bytes);
+	}
+
+	// Gets text where no size byte is present; size is specified by function parameter instead
+	this.getUnsizedText = function(offset, size) {
+		reader.seek(offset);
+
+		const bytes = reader.dataView.buffer.slice(reader.offset, reader.offset + size);
+
+		reader.offset += size;
+
+		return reader.decodeText(bytes);
+	}
+
+	this.decodeText = function(bytes) {
+		return new TextDecoder("windows-1252").decode(bytes);
+	}
+
+	/**
+	 * Generic class for reading package objects
+	 */
+	class UTObject {
+		constructor(object) {
+			reader.seek(object.serial_offset);
+
+			this.object_name = reader.nameTable[object.object_name_index];
+			this.properties  = reader.getObjectProperties(object);
+		}
+	}
+
+	/**
+	 * Package table objects
+	 */
+	class ExportTableObject {
+		constructor() {
+			this.class_index       = reader.getCompactIndex();
+			this.super_index       = reader.getCompactIndex();
+			this.package_index     = reader.getInt32();
+			this.object_name_index = reader.getCompactIndex();
+			this.object_flags      = reader.getUint32();
+			this.serial_size       = reader.getCompactIndex();
+
+			if (this.serial_size > 0) {
+				this.serial_offset = reader.getCompactIndex();
+			}
+		}
+	}
+
+	class ImportTableObject {
+		constructor() {
+			this.class_package_index = reader.getCompactIndex();
+			this.class_name_index    = reader.getCompactIndex();
+			this.package_index       = reader.getInt32();
+			this.object_name_index   = reader.getCompactIndex();
+		}
+	}
+
+	/**
+	 * UMOD file data
+	 */
+	class UMODFile {
+		constructor() {
+			this.name   = reader.getSizedText();
+			this.offset = reader.getUint32();
+			this.size   = reader.getUint32();
+			this.flags  = reader.getUint32();
+		}
+	}
+
+	/**
+	 * Structs
+	 */
+	class StateFrame {
+		constructor() {
+			this.name          = "StateFrame";
+			this.node          = reader.getCompactIndex();
+			this.state_node    = reader.getCompactIndex();
+			this.probe_mask    = reader.getInt64();
+			this.latent_action = reader.getUint32();
+
+			if (this.node !== 0) {
+				this.offset = reader.getCompactIndex();
+			}
+		}
+	}
+
+	class Vector {
+		constructor() {
+			this.x = reader.getFloat32();
+			this.y = reader.getFloat32();
+			this.z = reader.getFloat32();
+		}
+	}
+
+	class Rotator {
+		constructor() {
+			this.pitch = reader.getInt32();
+			this.yaw   = reader.getInt32();
+			this.roll  = reader.getInt32();
+		}
+	}
+
+	class Quaternion {
+		constructor() {
+			this.x = reader.getFloat32();
+			this.y = reader.getFloat32();
+			this.z = reader.getFloat32();
+			this.w = reader.getFloat32();
+		}
+	}
+
+	class Colour {
+		constructor() {
+			this.r = reader.getUint8();
+			this.g = reader.getUint8();
+			this.b = reader.getUint8();
+			this.a = reader.getUint8();
+		}
+	}
+
+	class Scale {
+		constructor() {
+			this.x          = reader.getFloat32();
+			this.y          = reader.getFloat32();
+			this.z          = reader.getFloat32();
+			this.sheer_rate = reader.getUint32();
+			this.sheer_axis = reader.getUint8();
+		}
+	}
+
+	class PointRegion {
+		constructor() {
+			this.zone        = reader.getCompactIndex();
+			this.i_leaf      = reader.getUint32();
+			this.zone_number = reader.getUint8();
+		}
+	}
+
+	class BoundingBox {
+		constructor() {
+			this.min    = new Vector();
+			this.max    = new Vector();
+			this.valid  = reader.getUint8() > 0;
+		}
+	}
+
+	class BoundingSphere {
+		constructor() {
+			this.centre = new Vector();
+			this.radius = reader.getFloat32();
+		}
+	}
+
+	class Plane {
+		constructor() {
+			this.x = reader.getFloat32();
+			this.y = reader.getFloat32();
+			this.z = reader.getFloat32();
+			this.w = reader.getFloat32();
+		}
+	}
+
+	class BspNode {
+		constructor() {
+			this.plane             = new Plane();
+			this.zone_mask         = reader.getUint64();
+			this.node_flags        = reader.getUint8();
+			this.i_vert_pool       = reader.getCompactIndex();
+			this.i_surf            = reader.getCompactIndex();
+			this.i_front           = reader.getCompactIndex();
+			this.i_back            = reader.getCompactIndex();
+			this.i_plane           = reader.getCompactIndex();
+			this.i_collision_bound = reader.getCompactIndex();
+			this.i_render_bound    = reader.getCompactIndex();
+
+			this.i_zone = [
+				reader.getCompactIndex(),
+				reader.getCompactIndex(),
+			];
+
+			this.vertices = reader.getUint8();
+
+			this.i_leaf = [
+				reader.getUint32(),
+				reader.getUint32(),
+			];
+		}
+	}
+
+	class BspSurface {
+		constructor() {
+			this.texture      = reader.getCompactIndex();
+			this.poly_flags   = reader.getUint32();
+			this.p_base       = reader.getCompactIndex();
+			this.v_normal     = reader.getCompactIndex();
+			this.v_texture_u  = reader.getCompactIndex();
+			this.v_texture_v  = reader.getCompactIndex();
+			this.i_light_map  = reader.getCompactIndex();
+			this.i_brush_poly = reader.getCompactIndex();
+			this.pan_u        = reader.getInt16();
+			this.pan_v        = reader.getInt16();
+			this.actor        = reader.getCompactIndex();
+		}
+	}
+
+	class ModelVertex {
+		constructor() {
+			this.vertex = reader.getCompactIndex();
+			this.i_side = reader.getCompactIndex();
+		}
+	}
+
+	class MeshVertex {
+		constructor() {
+			// Vertex X/Y/Z values are stored in a single DWORD
+			const xyz = reader.getUint32();
+
+			let x = (xyz & 0x7FF) / 8;
+			let y = ((xyz >> 11) & 0x7FF) / 8;
+			let z = ((xyz >> 22) & 0x3FF) / 4;
+
+			if (x > 128) x -= 256;
+			if (y > 128) y -= 256;
+			if (z > 128) z -= 256;
+
+			// Deus Ex
+			/*const xyz = Number(reader.getUint64());
+
+			let x = (xyz & 0xFFFF) / 256;
+			let y = ((xyz >> 16) & 0xFFFF) / 256;
+			let z = ((xyz >> 32) & 0xFFFF) / 256;
+
+			if (x > 128) x -= 256;
+			if (y > 128) y -= 256;
+			if (z > 128) z -= 256;*/
+
+			this.x = x;
+			this.y = y;
+			this.z = z;
+		}
+	}
+
+	class MeshTriangle {
+		constructor() {
+			this.vertex_index_1 = reader.getUint16();
+			this.vertex_index_2 = reader.getUint16();
+			this.vertex_index_3 = reader.getUint16();
+			this.vertex_1_u     = reader.getUint8();
+			this.vertex_1_v     = reader.getUint8();
+			this.vertex_2_u     = reader.getUint8();
+			this.vertex_2_v     = reader.getUint8();
+			this.vertex_3_u     = reader.getUint8();
+			this.vertex_3_v     = reader.getUint8();
+			this.flags          = reader.getUint32();
+			this.texture_index  = reader.getUint32();
+		}
+	}
+
+	class MeshAnimationSequence {
+		constructor() {
+			this.name        = reader.nameTable[reader.getCompactIndex()];
+			this.group       = reader.nameTable[reader.getCompactIndex()];
+			this.start_frame = reader.getUint32();
+			this.frame_count = reader.getUint32();
+
+			this.functions = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.functions.length; i++) {
+				const f = {};
+
+				f.time     = reader.getUint32();
+				f.function = reader.getCompactIndex();
+
+				this.functions[i] = f;
+			}
+
+			this.rate = reader.getFloat32();
+		}
+	}
+
+	class MeshConnection {
+		constructor() {
+			this.num_vert_triangles   = reader.getUint32();
+			this.triangle_list_offset = reader.getUint32();
+		}
+	}
+
+	class LodMeshFace {
+		constructor() {
+			this.wedge_index_1  = reader.getUint16();
+			this.wedge_index_2  = reader.getUint16();
+			this.wedge_index_3  = reader.getUint16();
+			this.material_index = reader.getUint16();
+		}
+	}
+
+	class LodMeshWedge {
+		constructor() {
+			this.vertex_index = reader.getUint16();
+			this.s            = reader.getUint8();
+			this.t            = reader.getUint8();
+		}
+	}
+
+	class LodMeshMaterial {
+		constructor() {
+			this.flags         = reader.getUint32();
+			this.texture_index = reader.getUint32();
+		}
+	}
+
+	class SkeletalMeshExtWedge {
+		constructor() {
+			this.i_vertex = reader.getUint16();
+			this.flags    = reader.getUint16();
+			this.u        = reader.getFloat32();
+			this.v        = reader.getFloat32();
+		}
+	}
+
+	class SkeletalMeshSkeleton {
+		constructor() {
+			this.name           = reader.nameTable[reader.getCompactIndex()];
+			this.flags          = reader.getUint32();
+			this.orientation    = new Quaternion();
+			this.position       = new Vector();
+			this.length         = reader.getFloat32();
+			this.x_size         = reader.getFloat32();
+			this.y_size         = reader.getFloat32();
+			this.z_size         = reader.getFloat32();
+			this.children_count = reader.getUint32();
+			this.parent_index   = reader.getUint32();
+		}
+	}
+
+	class SkeletalMeshBoneWeightIndex {
+		constructor() {
+			this.weight_index = reader.getUint16();
+			this.number       = reader.getUint16();
+			this.detail_a     = reader.getUint16();
+			this.detail_b     = reader.getUint16();
+		}
+	}
+
+	class SkeletalMeshBoneWeight {
+		constructor() {
+			this.point_index = reader.getUint16();
+			this.bone_weight = reader.getUint16();
+		}
+	}
+
+	class SkeletalMeshWeaponAdjust {
+		constructor() {
+			this.origin = new Vector();
+			this.x_axis = new Vector();
+			this.y_axis = new Vector();
+			this.z_axis = new Vector();
+		}
+	}
+
+	class BoneReference {
+		constructor() {
+			this.name         = reader.nameTable[reader.getCompactIndex()];
+			this.flags        = reader.getUint32();
+			this.parent_index = reader.getUint32();
+		}
+	}
+
+	class BoneMovement {
+		constructor() {
+			this.root_speed_3d = new Vector();
+			this.track_time    = reader.getFloat32();
+			this.start_bone    = reader.getUint32();
+			this.flags         = reader.getUint32();
+			this.bones         = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.bones.length; i++) {
+				this.bones[i] = reader.getUint32();
+			}
+
+			this.animation_tracks = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.animation_tracks.length; i++) {
+				this.animation_tracks[i] = new AnimationTrack();
+			}
+
+			this.root_track = new AnimationTrack();
+		}
+	}
+
+	class AnimationTrack {
+		constructor() {
+			this.flags = reader.getUint32();
+			this.key_quaternions = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.key_quaternions.length; i++) {
+				this.key_quaternions[i] = new Quaternion();
+			}
+
+			this.key_positions = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.key_positions.length; i++) {
+				this.key_positions[i] = new Vector();
+			}
+
+			this.key_time = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.key_time.length; i++) {
+				this.key_time[i] = reader.getFloat32();
+			}
+		}
+	}
+
+	class Zone {
+		constructor() {
+			this.zone_actor   = reader.getCompactIndex();
+			this.connectivity = reader.getUint64();
+			this.visibility   = reader.getUint64();
+
+			if (reader.header.version < 63) {
+				this.last_render_time = reader.getFloat32();
+			}
+		}
+	}
+
+	class LightMap {
+		constructor() {
+			this.data_offset    = reader.getUint32();
+			this.pan            = new Vector();
+			this.u_clamp        = reader.getCompactIndex();
+			this.v_clamp        = reader.getCompactIndex();
+			this.u_scale        = reader.getFloat32();
+			this.v_scale        = reader.getFloat32();
+			this.i_light_actors = reader.getInt32();
+		}
+	}
+
+	class BspLeaf {
+		constructor() {
+			this.i_zone        = reader.getCompactIndex()
+			this.i_permeating  = reader.getCompactIndex()
+			this.i_volumetric  = reader.getCompactIndex()
+			this.visible_zones = reader.getUint64();
+		}
+	}
+
+	class Polygon {
+		constructor() {
+			this.vertex_count = reader.getUint8();
+			this.origin       = new Vector();
+			this.normal       = new Vector();
+			this.texture_u    = new Vector();
+			this.texture_v    = new Vector();
+
+			this.vertices = new Array(this.vertex_count);
+
+			for (let i = 0; i < this.vertices.length; i++) {
+				this.vertices[i] = new Vector();
+			}
+
+			this.flags      = reader.getPolyFlags(reader.getUint32());
+			this.actor      = reader.getCompactIndex();
+			this.texture    = reader.getCompactIndex();
+			this.item_name  = reader.getCompactIndex();
+			this.link       = reader.getCompactIndex();
+			this.brush_poly = reader.getCompactIndex();
+			this.pan_u      = reader.getUint16();
+			this.pan_v      = reader.getUint16();
+
+			if (this.pan_u > 0x8000) this.pan_u |= 0xFFFF0000;
+			if (this.pan_v > 0x8000) this.pan_v |= 0xFFFF0000;
+		}
+	}
+
+	class MipMap {
+		constructor() {
+			if (reader.header.version >= 63) {
+				this.width_offset = reader.getUint32();
+			}
+
+			this.size = reader.getCompactIndex();
+			this.data = new Uint8Array(reader.dataView.buffer.slice(reader.offset, reader.offset + this.size));
+
+			reader.offset += this.size;
+
+			this.width       = reader.getUint32();
+			this.height      = reader.getUint32();
+			this.bits_width  = reader.getUint8();
+			this.bits_height = reader.getUint8();
+		}
+	}
+
+	class LevelURL {
+		constructor() {
+			this.protocol = reader.getSizedText();
+			this.host     = reader.getSizedText();
+			this.map      = reader.getSizedText();
+			this.options  = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.options.length; i++) {
+				this.options[i] = reader.getSizedText();
+			}
+
+			this.portal = reader.getSizedText();
+			this.port   = reader.getUint32();
+			this.valid  = reader.getUint32() > 0;
+		}
+	}
+
+	class ReachSpec {
+		constructor() {
+			this.distance         = reader.getUint32();
+			this.start            = reader.getCompactIndex();
+			this.end              = reader.getCompactIndex();
+			this.collision_radius = reader.getUint32();
+			this.collision_height = reader.getUint32();
+			this.reach_flags      = reader.getUint32();
+			this.pruned           = reader.getUint8() > 0;
+		}
+	}
+
+	class LevelMap {
+		constructor() {
+			this.key   = reader.getSizedText();
+			this.value = reader.getSizedText();
+		}
+	}
+
+	/**
+	 * UT native classes
+	 */
+	class ULevelBase extends UTObject {
+		constructor(levelObject) {
+			super(levelObject);
+
+			this.actors = new Array(reader.getUint32());
+
+			// Seems to be repeated...
+			reader.offset += 4;
+
+			for (let i = 0; i < this.actors.length; i++) {
+				this.actors[i] = reader.getObject(reader.getCompactIndex());
+			}
+
+			this.url = new LevelURL();
+		}
+	}
+
+	class ULevel extends ULevelBase {
+		constructor(levelObject) {
+			super(levelObject);
+
+			this.model       = reader.getObject(reader.getCompactIndex());
+			this.reach_specs = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.reach_specs.length; i++) {
+				this.reach_specs[i] = new ReachSpec();
+			}
+
+			this.approx_time   = reader.getFloat32();
+			this.first_deleted = reader.getCompactIndex();
+			this.text_blocks   = new Array(16);
+
+			for (let i = 0; i < this.text_blocks.length; i++) {
+				this.text_blocks[i] = reader.getObject(reader.getCompactIndex());
+			}
+
+			if (reader.header.version > 62) {
+				this.travel_info = new Array(reader.getCompactIndex());
+
+				for (let i = 0; i < this.travel_info.length; i++) {
+					this.travel_info[i] = new LevelMap();
+				}
+			}
+		}
+	}
+
+	class UTexture extends UTObject {
+		constructor(textureObject) {
+			super(textureObject);
+
+			this.mip_maps = new Array(reader.getUint8());
+
+			for (let i = 0; i < this.mip_maps.length; i++) {
+				this.mip_maps[i] = new MipMap();
+			}
+		}
+	}
+
+	class UPalette extends UTObject {
+		constructor(paletteObject) {
+			super(paletteObject);
+
+			this.colours = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.colours.length; i++) {
+				this.colours[i] = new Colour();
+			}
+		}
+	}
+
+	class UPolys extends UTObject {
+		constructor(polysObject) {
+			super(polysObject);
+
+			this.poly_count = reader.getUint32();
+
+			// Seems to be repeated...
+			reader.offset += 4;
+
+			this.polys = new Array(this.poly_count);
+
+			for (let i = 0; i < this.polys.length; i++) {
+				this.polys[i] = new Polygon();
+			}
+		}
+	}
+
+	class UPrimitive extends UTObject {
+		constructor(modelObject) {
+			super(modelObject);
+
+			this.bounding_box    = new BoundingBox();
+			this.bounding_sphere = new BoundingSphere();
+		}
+	}
+
+	class UModel extends UPrimitive {
+		constructor(modelObject) {
+			super(modelObject);
+
+			if (reader.header.version > 61) {
+				this.vectors = new Array(reader.getCompactIndex());
+
+				for (let i = 0; i < this.vectors.length; i++) {
+					this.vectors[i] = new Vector();
+				}
+
+				this.points = new Array(reader.getCompactIndex());
+
+				for (let i = 0; i < this.points.length; i++) {
+					this.points[i] = new Vector();
+				}
+
+				this.nodes = new Array(reader.getCompactIndex());
+
+				for (let i = 0; i < this.nodes.length; i++) {
+					this.nodes[i] = new BspNode();
+				}
+
+				this.surfaces = new Array(reader.getCompactIndex());
+
+				for (let i = 0; i < this.surfaces.length; i++) {
+					this.surfaces[i] = new BspSurface();
+				}
+
+				this.vertices = new Array(reader.getCompactIndex());
+
+				for (let i = 0; i < this.vertices.length; i++) {
+					this.vertices[i] = new ModelVertex();
+				}
+
+				this.shared_sides = reader.getUint32();
+
+				this.zones = new Array(reader.getUint32());
+
+				for (let i = 0; i < this.zones.length; i++) {
+					this.zones[i] = new Zone();
+				}
+
+				this.polys = reader.getCompactIndex();
+
+				this.light_map = new Array(reader.getCompactIndex());
+
+				for (let i = 0; i < this.light_map.length; i++) {
+					this.light_map[i] = new LightMap();
+				}
+
+				this.light_bits = new Array(reader.getCompactIndex());
+
+				for (let i = 0; i < this.light_bits.length; i++) {
+					this.light_bits[i] = reader.getUint8();
+				}
+
+				this.bounds = new Array(reader.getCompactIndex());
+
+				for (let i = 0; i < this.bounds.length; i++) {
+					this.bounds[i] = new BoundingBox();
+				}
+
+				this.leaf_hulls = new Array(reader.getCompactIndex());
+
+				for (let i = 0; i < this.leaf_hulls.length; i++) {
+					this.leaf_hulls[i] = reader.getUint32();
+				}
+
+				this.leaves = new Array(reader.getCompactIndex());
+
+				for (let i = 0; i < this.leaves.length; i++) {
+					this.leaves[i] = new BspLeaf();
+				}
+
+				this.lights = new Array(reader.getCompactIndex());
+
+				for (let i = 0; i < this.lights.length; i++) {
+					this.lights[i] = reader.getCompactIndex();
+				}
+
+				this.root_outside = reader.getUint32() > 0;
+				this.linked       = reader.getUint32() > 0;
+			}
+		}
+	}
+
+	class UMesh extends UPrimitive {
+		constructor(meshObject) {
+			super(meshObject);
+
+			if (reader.header.version > 61) {
+				this.vertices_jump = reader.getUint32();
+			}
+
+			this.vertices = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.vertices.length; i++) {
+				this.vertices[i] = new MeshVertex();
+			}
+
+			if (reader.header.version > 61) {
+				this.triangles_jump = reader.getUint32();
+			}
+
+			this.triangles = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.triangles.length; i++) {
+				this.triangles[i] = new MeshTriangle();
+			}
+
+			this.anim_sequences = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.anim_sequences.length; i++) {
+				this.anim_sequences[i] = new MeshAnimationSequence();
+			}
+
+			this.connects_jump = reader.getUint32();
+
+			this.connections = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.connections.length; i++) {
+				this.connections[i] = new MeshConnection();
+			}
+
+			this.bounding_box_2    = new BoundingBox();
+			this.bounding_sphere_2 = new BoundingSphere();
+			this.vert_links_jump   = reader.getUint32();
+
+			this.vert_links = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.vert_links.length; i++) {
+				this.vert_links[i] = reader.getUint32();
+			}
+
+			this.textures = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.textures.length; i++) {
+				this.textures[i] = reader.getObject(reader.getCompactIndex());
+			}
+
+			this.bounding_boxes = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.bounding_boxes.length; i++) {
+				this.bounding_boxes[i] = new BoundingBox();
+			}
+
+			this.bounding_spheres = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.bounding_spheres.length; i++) {
+				this.bounding_spheres[i] = new BoundingSphere();
+			}
+
+			this.frame_verts     = reader.getUint32();
+			this.anim_frames     = reader.getUint32();
+			this.flags_AND       = reader.getUint32();
+			this.flags_OR        = reader.getUint32();
+			this.scale           = new Vector();
+			this.origin          = new Vector();
+			this.rotation_origin = new Rotator();
+			this.cur_poly        = reader.getUint32();
+			this.cur_vertex      = reader.getUint32();
+
+			if (reader.header.version === 65) {
+				this.texture_lod = [reader.getFloat32()];
+			}
+
+			else if (reader.header.version >= 66) {
+				this.texture_lod = new Array(reader.getCompactIndex());
+
+				for (let i = 0; i < this.texture_lod.length; i++) {
+					this.texture_lod[i] = reader.getFloat32();
+				}
+			}
+		}
+	}
+
+	class ULodMesh extends UMesh {
+		constructor(lodMeshObject) {
+			super(lodMeshObject);
+
+			this.collapse_point_thus = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.collapse_point_thus.length; i++) {
+				this.collapse_point_thus[i] = reader.getUint16();
+			}
+
+			this.face_level = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.face_level.length; i++) {
+				this.face_level[i] = reader.getUint16();
+			}
+
+			this.faces = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.faces.length; i++) {
+				this.faces[i] = new LodMeshFace();
+			}
+
+			this.collapse_wedge_thus = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.collapse_wedge_thus.length; i++) {
+				this.collapse_wedge_thus[i] = reader.getUint16();
+			}
+
+			this.wedges = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.wedges.length; i++) {
+				this.wedges[i] = new LodMeshWedge();
+			}
+
+			this.materials = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.materials.length; i++) {
+				this.materials[i] = new LodMeshMaterial();
+			}
+
+			this.special_faces = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.special_faces.length; i++) {
+				this.special_faces[i] = new LodMeshFace();
+			}
+
+			this.model_vertices   = reader.getUint32();
+			this.special_vertices = reader.getUint32();
+			this.mesh_scale_max   = reader.getFloat32();
+			this.lod_hysteresis   = reader.getFloat32();
+			this.lod_strength     = reader.getFloat32();
+			this.lod_min_verts    = reader.getUint32();
+			this.lod_morph        = reader.getFloat32();
+			this.lod_z_displace   = reader.getFloat32();
+
+			this.remap_anim_vertices = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.remap_anim_vertices.length; i++) {
+				this.remap_anim_vertices[i] = reader.getUint16();
+			}
+
+			this.old_frame_verts = reader.getUint32();
+		}
+	}
+
+	class USkeletalMesh extends ULodMesh {
+		constructor(skeletalMeshObject) {
+			super(skeletalMeshObject);
+
+			this.ext_wedges = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.ext_wedges.length; i++) {
+				this.ext_wedges[i] = new SkeletalMeshExtWedge();
+			}
+
+			this.points = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.points.length; i++) {
+				this.points[i] = new Vector();
+			}
+
+			this.skeletons = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.skeletons.length; i++) {
+				this.skeletons[i] = new SkeletalMeshSkeleton();
+			}
+
+			this.bone_weight_indices = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.bone_weight_indices.length; i++) {
+				this.bone_weight_indices[i] = new SkeletalMeshBoneWeightIndex();
+			}
+
+			this.bone_weights = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.bone_weights.length; i++) {
+				this.bone_weights[i] = new SkeletalMeshBoneWeight();
+			}
+
+			this.local_points = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.local_points.length; i++) {
+				this.local_points[i] = new Vector();
+			}
+
+			this.skeletal_depth    = reader.getUint32();
+			this.default_animation = reader.getObject(reader.getCompactIndex());
+			this.weapon_bone_index = reader.getUint32();
+			this.weapon_adjust     = new SkeletalMeshWeaponAdjust();
+		}
+	}
+
+	class UAnimation extends UTObject {
+		constructor(animationObject) {
+			super(animationObject);
+
+			this.bones = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.bones.length; i++) {
+				this.bones[i] = new BoneReference();
+			}
+
+			this.movements = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.movements.length; i++) {
+				this.movements[i] = new BoneMovement();
+			}
+
+			this.animation_sequences = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.animation_sequences.length; i++) {
+				this.animation_sequences[i] = new MeshAnimationSequence();
+			}
+		}
+	}
+
+	class UMusic extends UTObject {
+		constructor(musicObject) {
+			super(musicObject);
+
+			// If the package itself only contains music (.umx) then the first name table entry is the format.
+			// This is not always the case if the music is embedded in a map, for example.
+			this.format          = reader.nameTable[reader.getCompactIndex()];
+			this.data_end_offset = reader.getUint32();
+			this.size            = reader.getCompactIndex(); // includes null padding?
+			this.audio_data      = reader.dataView.buffer.slice(reader.offset, reader.offset + this.size);
+		}
+	}
+
+	class USound extends UTObject {
+		constructor(soundObject) {
+			super(soundObject);
+
+			this.format = reader.nameTable[reader.getCompactIndex()];
+
+			if (reader.header.version >= 63) {
+				this.next_object_offset = reader.getUint32();
+			}
+
+			this.size         = reader.getCompactIndex();
+			this.audio_offset = reader.offset;
+		}
+	}
+
+	class UTextBuffer extends UTObject {
+		constructor(textBufferObject) {
+			super(textBufferObject);
+
+			this.pos  = reader.getUint32();
+			this.top  = reader.getUint32();
+			this.size = reader.getCompactIndex();
+
+			if (this.size > 0) {
+				this.contents = reader.decodeText(reader.dataView.buffer.slice(reader.offset, reader.offset + this.size - 1));
+				reader.offset += this.size + 1;
+			}
+		}
+	}
+
+	class UFont extends UTObject {
+		constructor(fontObject) {
+			super(fontObject);
+
+			this.textures = new Array(reader.getUint8());
+
+			for (let i = 0; i < this.textures.length; i++) {
+				const fontTexture = {};
+
+				fontTexture.texture    = reader.getObject(reader.getCompactIndex());
+				fontTexture.characters = new Array(reader.getCompactIndex());
+
+				for (let j = 0; j < fontTexture.characters.length; j++) {
+					fontTexture.characters[j] = {};
+
+					fontTexture.characters[j].x      = reader.getUint32();
+					fontTexture.characters[j].y      = reader.getUint32();
+					fontTexture.characters[j].width  = reader.getUint32();
+					fontTexture.characters[j].height = reader.getUint32();
+				}
+
+				this.textures[i] = fontTexture;
+			}
+		}
+	}
 
 	this.propertyTypes = [
 		"Unknown",
@@ -28,12 +1164,15 @@ window.UTPackage = function(arrayBuffer) {
 	];
 
 	this.fileTypes = {
-		u   : "System",
-		uax : "Sound",
-		umx : "Music",
-		unr : "Map",
-		utx : "Texture",
-		uxx : "Cache",
+		u    : "System",
+		uax  : "Sound",
+		umod : "UMOD",
+		umx  : "Music",
+		unr  : "Map",
+		utx  : "Texture",
+		uxx  : "Cache",
+		uz   : "Zip",
+		tmp  : "Zip",
 	}
 
 	this.defaultPackages = {
@@ -350,96 +1489,127 @@ window.UTPackage = function(arrayBuffer) {
 		"Mirrored"         : 0x08000000
 	}
 
-	this.index = function(dataArray, offset = 0) {
-		let l = 5;
-		let output = dataArray[offset];
+	this.brushClasses = [
+		"AssertMover",
+		"AttachMover",
+		"Brush",
+		"ElevatorMover",
+		"GradualMover",
+		"LoopMover",
+		"MixMover",
+		"Mover",
+		"RotatingMover",
+	];
 
-		// Get index size
-		if ((output & 0x40) === 0) {
-			l = 1;
-		} else {
-			for (let i = 1; i < 4; i++) {
-				if ((dataArray[offset + i] & 0x80) === 0) {
-					l = i + 1;
-					break;
-				}
-			}
-		}
+	this.moverClasses = [
+		"AssertMover",
+		"AttachMover",
+		"ElevatorMover",
+		"GradualMover",
+		"LoopMover",
+		"MixMover",
+		"Mover",
+		"RotatingMover",
+	];
 
-		// Calculate index
-		const signed = (output & 0x80) === 0x80;
+	this.meshClasses = [
+		"Mesh",
+		"LodMesh",
+		"SkeletalMesh",
+	];
 
-		output &= 0x3F;
+	this.enumBumpType = [
+		"BT_PlayerBump",
+		"BT_PawnBump",
+		"BT_AnyBump",
+	];
 
-		for (let i = 1; i < Math.min(l, 4); i++) {
-			output |= (dataArray[offset + i] & 0x7F) << (6 + ((i - 1) * 7));
-		}
+	this.enumMoverEncroachType = [
+		"ME_StopWhenEncroach",
+		"ME_ReturnWhenEncroach",
+		"ME_CrushWhenEncroach",
+		"ME_IgnoreWhenEncroach",
+	];
 
-		if (l === 5) {
-			output |= (dataArray[offset + 4] & 0x1F) << 27;
-		}
+	this.enumMoverGlideType = [
+		"MV_MoveByTime",
+		"MV_GlideByTime",
+	];
 
-		return {
-			value  : signed ? -1 * output : output,
-			length : l
-		}
+	this.enumCsgOper = [
+		"CSG_Active",
+		"CSG_Add",
+		"CSG_Subtract",
+		"CSG_Intersect",
+		"CSG_Deintersect",
+	];
+
+	this.enumSheerAxis = [
+		"SHEER_None",
+		"SHEER_XY",
+		"SHEER_XZ",
+		"SHEER_YX",
+		"SHEER_YZ",
+		"SHEER_ZX",
+		"SHEER_ZY",
+	];
+
+	/**
+	 * UT package functions
+	 */
+	this.readPackage = function() {
+		// Set global variables for access within other functions
+		reader.header      = reader.getPackageHeader();
+		reader.version     = reader.header.version;
+		reader.nameTable   = reader.getNameTable();
+		reader.exportTable = reader.getExportTable();
+		reader.importTable = reader.getImportTable();
+
+		return reader;
 	}
 
-	this.word = function(dataArray, offset = 0) {
-		return ((dataArray[offset + 1] << 8) + dataArray[offset]);
-	}
+	this.getPackageHeader = function() {
+		const header = {};
 
-	this.dword = function(dataArray, offset = 0) {
-		return ((dataArray[offset + 3] << 24)
-			  + (dataArray[offset + 2] << 16)
-			  + (dataArray[offset + 1] << 8)
-			  +  dataArray[offset]);
-	}
+		reader.seek(0);
 
-	this.qword = function(dataArray, offset = 0) {
-		return ((dataArray[offset + 7] << 56)
-			+   (dataArray[offset + 6] << 48)
-			+   (dataArray[offset + 5] << 40)
-			+   (dataArray[offset + 4] << 32)
-			+   (dataArray[offset + 3] << 24)
-			+   (dataArray[offset + 2] << 16)
-			+   (dataArray[offset + 1] << 8)
-			+    dataArray[offset]);
-	}
+		header.signature = reader.getUint32();
 
-	this.float32 = function(dword) {
-		return ((dword & ((0x01 << 23) - 0x01)) + (0x01 << 23) * (dword >> 31 | 0x01)) * Math.pow(2, ((dword >> 23 & 0xFF) - 127) - 23);
-	}
-
-	this.getHeader = function() {
-		const header = {
-			signature       : self.dataView.getUint32(0,  true).toString(16).toUpperCase(),
-			version         : self.dataView.getUint32(4,  true),
-			package_flags   : self.dataView.getUint32(8,  true),
-			name_count      : self.dataView.getUint32(12, true),
-			name_offset     : self.dataView.getUint32(16, true),
-			export_count    : self.dataView.getUint32(20, true),
-			export_offset   : self.dataView.getUint32(24, true),
-			import_count    : self.dataView.getUint32(28, true),
-			import_offset   : self.dataView.getUint32(32, true),
+		if (header.signature !== SIGNATURE_UT) {
+			throw `Invalid package signature: 0x${header.signature.toString(16).padStart(8, 0)}`;
 		}
+
+		header.version          = reader.getUint16();
+		header.licensee_version = reader.getUint16();
+		header.package_flags    = reader.getUint32();
+		header.name_count       = reader.getUint32();
+		header.name_offset      = reader.getUint32();
+		header.export_count     = reader.getUint32();
+		header.export_offset    = reader.getUint32();
+		header.import_count     = reader.getUint32();
+		header.import_offset    = reader.getUint32();
 
 		if (header.version < 68) {
-			header.heritage_count  = self.dataView.getUint32(36, true);
-			header.heritage_offset = self.dataView.getUint32(40, true);
+			header.heritage_count  = reader.getUint32();
+			header.heritage_offset = reader.getUint32();
 		} else {
-			header.guid = (self.dataView.getUint32(36, true).toString(16)
-				+ self.dataView.getUint32(40, true).toString(16)
-				+ self.dataView.getUint32(44, true).toString(16)
-				+ self.dataView.getUint32(48, true).toString(16)).toUpperCase();
-			header.generation_count = self.dataView.getUint32(52, true);
+			header.guid = (
+				  reader.getUint32().toString(16).padStart(8, 0)
+				+ reader.getUint32().toString(16).padStart(8, 0)
+				+ reader.getUint32().toString(16).padStart(8, 0)
+				+ reader.getUint32().toString(16).padStart(8, 0)
+			).toUpperCase();
+
+			header.generation_count = reader.getUint32();
 			header.generations = [];
 
-			for (let offset = 56; header.generations.length < header.generation_count; offset += 4) {
-				header.generations.push({
-					export_count : self.dataView.getUint32(offset, true),
-					name_count   : self.dataView.getUint32(offset + 4, true),
-				})
+			for (let i = 0; i < header.generation_count; i++) {
+				const generation = {};
+
+				generation.export_count = reader.getUint32();
+				generation.name_count   = reader.getUint32();
+
+				header.generations.push(generation);
 			}
 		}
 
@@ -448,43 +1618,31 @@ window.UTPackage = function(arrayBuffer) {
 
 	this.getNameTable = function() {
 		const nameTable = [];
+		const propSize  = 4;
 
-		const count = self.header.name_count;
-		let offset  = self.header.name_offset;
+		reader.seek(reader.header.name_offset);
 
-		let currentName = "";
+		if (reader.header.version < 64) {
+			for (let i = 0; i < reader.header.name_count; i++) {
+				const bytes = [];
+				let char    = reader.getUint8();
 
-		while (offset < self.dataView.byteLength) {
-			if (self.version < 68) {
-				const byte = self.dataView.getUint8(offset);
-
-				// Interpret byte as string until the next 0 byte is found
-				if (byte !== 0) {
-					currentName += String.fromCharCode(byte);
-					offset++;
-				} else {
-					nameTable.push(currentName);
-
-					// All names found in table
-					if (nameTable.length === count) break;
-
-					currentName = "";
-					offset += 5;
+				while (char !== 0x00) {
+					bytes.push(char);
+					char = reader.getUint8();
 				}
-			} else {
-				// First byte is the name length, so use this then adjust the offset past the object flags
-				const nameLength = self.dataView.getUint8(offset);
-				let name = "";
 
-				for (let i = 0; i < nameLength - 1; i++) {
-					name += String.fromCharCode(self.dataView.getUint8(++offset));
-				}
+				const name = reader.decodeText(new Uint8Array(bytes));
 
 				nameTable.push(name);
 
-				if (nameTable.length === count) break;
+				reader.offset += propSize;
+			}
+		} else {
+			for (let i = 0; i < reader.header.name_count; i++) {
+				const name = reader.getSizedText(propSize);
 
-				offset += 6;
+				nameTable.push(name);
 			}
 		}
 
@@ -493,59 +1651,11 @@ window.UTPackage = function(arrayBuffer) {
 
 	this.getExportTable = function() {
 		const exportTable = [];
-		const exportData  = [];
 
-		const exportCount = self.header.export_count;
-		let offset = self.header.export_offset;
+		reader.seek(reader.header.export_offset);
 
-		// Push export table bytes into array for processing
-		for (let i = 0; i < exportCount * 33; i++) {
-			if (offset >= self.dataView.byteLength) break;
-
-			exportData.push(self.dataView.getUint8(offset));
-			offset++;
-		}
-
-		// Iterate through export table data for each entry
-		let lastMainIndex = 0;
-
-		for (let i = 0; i < exportCount; i++) {
-			const entry = {};
-
-			const classIndex = self.index(exportData, lastMainIndex);
-			lastMainIndex += classIndex.length;
-
-			const superIndex = self.index(exportData, lastMainIndex);
-			lastMainIndex += superIndex.length;
-
-			const packageIndex = self.dword(exportData, lastMainIndex);
-			lastMainIndex += 4;
-
-			const objectNameIndex = self.index(exportData, lastMainIndex);
-			lastMainIndex += objectNameIndex.length;
-
-			const objectFlags = self.dword(exportData, lastMainIndex);
-			lastMainIndex += 4;
-
-			const serialSize = self.index(exportData, lastMainIndex, true);
-			lastMainIndex += serialSize.length;
-
-			// Assign this export table entry's values
-			entry.class_index       = classIndex.value;
-			entry.super_index       = superIndex.value;
-			entry.package_index     = packageIndex;
-			entry.object_name_index = objectNameIndex.value;
-			entry.object_flags      = objectFlags;
-			entry.serial_size       = serialSize.value;
-
-			if (serialSize.value > 0) {
-				const serialOffset = self.index(exportData, lastMainIndex);
-				lastMainIndex += serialOffset.length;
-
-				entry.serial_offset = serialOffset.value;
-			}
-
-			exportTable.push(entry);
+		for (let i = 0; i < reader.header.export_count; i++) {
+			exportTable.push(new ExportTableObject());
 		}
 
 		return exportTable;
@@ -554,82 +1664,41 @@ window.UTPackage = function(arrayBuffer) {
 	this.getImportTable = function() {
 		const importTable = [];
 
-		let offset = self.header.import_offset;
+		reader.seek(reader.header.import_offset);
 
-		for (let i = 0; i < self.header.import_count; i++) {
-			const entry = {};
-
-			const classPackageIndex = self.index(self.packageData, offset);
-			offset += classPackageIndex.length;
-
-			const classNameIndex = self.index(self.packageData, offset);
-			offset += classNameIndex.length;
-
-			const packageIndex = self.dword(self.packageData, offset);
-			offset += 4;
-
-			const objectNameIndex = self.index(self.packageData, offset);
-			offset += objectNameIndex.length;
-
-			// Assign this import table entry's values
-			entry.class_package_index = classPackageIndex.value;
-			entry.class_name_index    = classNameIndex.value;
-			entry.package_index       = packageIndex;
-			entry.object_name_index   = objectNameIndex.value;
-
-			importTable.push(entry);
+		for (let i = 0; i < reader.header.import_count; i++) {
+			importTable.push(new ImportTableObject());
 		}
 
 		return importTable;
 	}
 
-	this.getObjectProperties = function(object, flags = 0x00000000) {
+	this.getObjectProperties = function(object) {
 		const properties = [];
 
-		let offset = object.serial_offset;
+		reader.seek(object.serial_offset);
 
-		// Check other flags first (such as state blocks)
-		if ((flags & 0x02000000) === 0x02000000) {
-			const stateFrameNode = self.index(self.packageData, offset);
-			offset += stateFrameNode.length;
-
-			const stateFrameStateNode = self.index(self.packageData, offset);
-			offset += stateFrameStateNode.length;
-
-			const stateFrameProbeMask = self.qword(self.packageData, offset);
-			offset += 8;
-
-			const stateFrameLatentAction = self.dword(self.packageData, offset);
-			offset += 4;
-
-			if (stateFrameNode.value !== 0) {
-				offset += self.index(self.packageData, offset).length;
-			}
+		// If RF_HasStack flag is present, handle "StateFrame" block which comes before the properties
+		if ((object.object_flags & 0x02000000) === 0x02000000) {
+			// Not actually a property but include it anyway for completeness
+			properties.push(new StateFrame());
 		}
 
-		let currentProp = self.index(self.packageData, offset);
-		let currentPropName = self.nameTable[currentProp.value];
+		// The first byte of property block is a name table index
+		let currentPropName = reader.nameTable[reader.getCompactIndex()];
 
-		// First byte of property block is a name table index
 		while (currentPropName.toLowerCase() !== "none") {
 			const prop = {};
 
 			// Next byte contains property info (type, size, etc.)
-			offset += currentProp.length;
+			const infoByte = reader.getUint8();
 
-			let propInfoByte = self.packageData[offset];
-			offset++;
-
-			prop.name = self.nameTable[currentProp.value];
-			prop.type = self.propertyTypes[propInfoByte & 0x0F];
+			prop.name = currentPropName;
+			prop.type = reader.propertyTypes[infoByte & 0x0F];
 
 			// If the property type is a struct then the struct name follows
 			if (prop.type === "Struct") {
-				const subType = self.index(self.packageData, offset);
-
-				prop.subtype = self.nameTable[subType.value];
-
-				offset += subType.length;
+				prop.subtype = reader.nameTable[reader.getCompactIndex()];
 			}
 
 			/**
@@ -643,37 +1712,35 @@ window.UTPackage = function(arrayBuffer) {
 			 *   6 = a word follows with real size
 			 *   7 = an integer follows with real size
 			 */
-			const propSizeInfo = (propInfoByte >> 4) & 0x07;
+			const propSizeInfo = (infoByte >> 4) & 0x07;
+			let propSize;
 
 			switch (propSizeInfo) {
-				case 0: prop.length = 1;  break;
-				case 1: prop.length = 2;  break;
-				case 2: prop.length = 4;  break;
-				case 3: prop.length = 12; break;
-				case 4: prop.length = 16; break;
+				case 0: propSize = 1;  break;
+				case 1: propSize = 2;  break;
+				case 2: propSize = 4;  break;
+				case 3: propSize = 12; break;
+				case 4: propSize = 16; break;
 
 				case 5:
-					prop.length = self.packageData[offset];
-					offset += 1;
+					propSize = reader.getUint8();
 				break;
 
 				case 6:
-					prop.length = self.word(self.packageData, offset);
-					offset += 2;
+					propSize = reader.getUint16();
 				break;
 
 				case 7:
-					prop.length = self.dword(self.packageData, offset);
-					offset += 4;
+					propSize = reader.getUint32();
 				break;
 
 				default:
-					prop.length = 1;
+					propSize = 1;
 				break;
 			}
 
 			// Property special flags
-			const arrayFlag = !!(propInfoByte >> 7);
+			const arrayFlag = !!(infoByte >> 7);
 
 			if (prop.type !== "Boolean" && arrayFlag) {
 				let prevProp, arrayIndex;
@@ -691,18 +1758,14 @@ window.UTPackage = function(arrayBuffer) {
 
 				if (prevProp && prevProp.index !== undefined) {
 					if (prevProp.index >= 16383) {
-						arrayIndex = self.dword(self.packageData, offset) & 0x3FFFFFFF;
-						offset += 4;
+						arrayIndex = reader.getUint32() & 0x3FFFFFFF;
 					} else if (prevProp.index >= 127) {
-						arrayIndex = self.word(self.packageData, offset) & 0x7FFF;
-						offset += 2;
+						arrayIndex = reader.getUint16() & 0x7FFF;
 					} else {
-						arrayIndex = self.packageData[offset];
-						offset++;
+						arrayIndex = reader.getUint8();
 					}
 				} else {
-					arrayIndex = self.packageData[offset];
-					offset++;
+					arrayIndex = reader.getUint8();
 				}
 
 				prop.aggtype = "Array";
@@ -712,18 +1775,11 @@ window.UTPackage = function(arrayBuffer) {
 			// Assign property value
 			switch (prop.type) {
 				case "Byte":
-					prop.value = self.packageData[offset];
-					offset += prop.length;
+					prop.value = reader.getUint8();
 				break;
 
 				case "Integer":
-					prop.value = self.dword(self.packageData, offset);
-
-					if (prop.value > 0x7FFFFFFF) {
-						prop.value -= 0x100000000;
-					}
-
-					offset += prop.length;
+					prop.value = reader.getInt32();
 				break;
 
 				case "Boolean":
@@ -731,19 +1787,15 @@ window.UTPackage = function(arrayBuffer) {
 				break;
 
 				case "Float":
-					prop.value = self.float32(self.dword(self.packageData, offset));
-					offset += prop.length;
+					prop.value = reader.getFloat32();
 				break;
 
 				case "Object":
-					prop.value = self.index(self.packageData, offset).value;
-					offset += prop.length;
+					prop.value = reader.getCompactIndex();
 				break;
 
 				case "Name":
-					const nameProp = self.index(self.packageData, offset);
-					prop.value = self.nameTable[nameProp.value];
-					offset += nameProp.length;
+					prop.value = reader.nameTable[reader.getCompactIndex()];
 				break;
 
 				// Handled later
@@ -753,119 +1805,33 @@ window.UTPackage = function(arrayBuffer) {
 				case "Struct":
 					switch (prop.subtype.toLowerCase()) {
 						case "color":
-							const r = self.packageData[offset];
-							offset++;
-
-							const g = self.packageData[offset];
-							offset++;
-
-							const b = self.packageData[offset];
-							offset++;
-
-							const a = self.packageData[offset];
-							offset++;
-
-							prop.value = {
-								r : r,
-								g : g,
-								b : b,
-								a : a,
-							}
+							prop.value = new Colour();
 						break;
 
 						case "vector":
-							const vectorX = self.dataView.getFloat32(offset, true);
-							offset += 4;
-
-							const vectorY = self.dataView.getFloat32(offset, true);
-							offset += 4;
-
-							const vectorZ = self.dataView.getFloat32(offset, true);
-							offset += 4;
-
-							prop.value = {
-								x : vectorX,
-								y : vectorY,
-								z : vectorZ,
-							}
+							prop.value = new Vector();
 						break;
 
 						case "rotator":
-							const pitch = self.dword(self.packageData, offset);
-							offset += 4;
-
-							const yaw = self.dword(self.packageData, offset);
-							offset += 4;
-
-							const roll = self.dword(self.packageData, offset);
-							offset += 4;
-
-							prop.value = {
-								pitch : pitch,
-								yaw   : yaw,
-								roll  : roll,
-							}
+							prop.value = new Rotator();
 						break;
 
 						case "scale":
-							const scaleX = self.float32(self.dword(self.packageData, offset));
-							offset += 4;
-
-							const scaleY = self.float32(self.dword(self.packageData, offset));
-							offset += 4;
-
-							const scaleZ = self.float32(self.dword(self.packageData, offset));
-							offset += 4;
-
-							const sheerRate = self.dword(self.packageData, offset);
-							offset += 4;
-
-							const sheerAxis = self.packageData[offset];
-							offset++;
-
-							prop.value = {
-								x          : scaleX,
-								y          : scaleY,
-								z          : scaleZ,
-								sheer_rate : sheerRate,
-								sheer_axis : sheerAxis,
-							}
+							prop.value = new Scale();
 						break;
 
 						case "pointregion":
-							const zone = self.index(self.packageData, offset);
-							offset += zone.length;
-
-							const iLeaf = self.dword(self.packageData, offset);
-							offset += 4;
-
-							const zoneNumber = self.packageData[offset];
-							offset += 1;
-
-							prop.value = {
-								zone        : zone.value,
-								i_leaf      : iLeaf,
-								zone_number : zoneNumber,
-							}
+							prop.value = new PointRegion();
 						break;
 
 						default:
-							offset += prop.length;
+							reader.offset += propSize;
 						break;
 					}
 				break;
 
 				case "Str":
-					const strLength = self.index(self.packageData, offset);
-					offset += strLength.length;
-
-					prop.value = "";
-
-					for (let i = 0; i < strLength.value - 1; i++) {
-						prop.value += String.fromCharCode(self.packageData[offset++]);
-					}
-
-					offset++;
+					prop.value = reader.getCompactIndexSizedText();
 				break;
 
 				// Unknown
@@ -876,20 +1842,16 @@ window.UTPackage = function(arrayBuffer) {
 				case "Map":
 				case "Fixed Array":
 				default:
-					offset += prop.length;
+					reader.offset += propSize;
 				break;
 			}
 
 			properties.push(prop);
 
-			currentProp = self.index(self.packageData, offset);
-			currentPropName = self.nameTable[currentProp.value];
+			currentPropName = reader.nameTable[reader.getCompactIndex()];
 		}
 
-		return {
-			props  : properties,
-			offset : offset + 1,
-		}
+		return properties;
 	}
 
 	this.getObject = function(index) {
@@ -900,19 +1862,19 @@ window.UTPackage = function(arrayBuffer) {
 		if (index < 0) {
 			return {
 				table  : "import",
-				object : self.importTable[~index],
+				object : reader.importTable[~index],
 			}
 		}
 
 		return {
 			table  : "export",
-			object : self.exportTable[index - 1],
+			object : reader.exportTable[index - 1],
 		}
 	}
 
 	this.getObjectByName = function(objectName) {
-		for (const object of self.exportTable) {
-			if (self.nameTable[object.object_name_index] === objectName) {
+		for (const object of reader.exportTable) {
+			if (reader.nameTable[object.object_name_index] === objectName) {
 				return object;
 			}
 		}
@@ -920,24 +1882,41 @@ window.UTPackage = function(arrayBuffer) {
 		return null;
 	}
 
+	this.getObjectNameFromIndex = function(index) {
+		try {
+			return reader.nameTable[reader.getObject(index).object.object_name_index];
+		} catch (e) {
+			return "None";
+		}
+	}
+
 	this.getObjectPropertiesFromName = function(objectName) {
-		const object = self.getObjectByName(objectName);
+		const object = reader.getObjectByName(objectName);
 
 		if (object) {
-			return self.getObjectProperties(object, object.object_flags);
+			return reader.getObjectProperties(object);
 		}
 
-		return {};
+		return [];
+	}
+
+	this.getParentObject = function(object) {
+		if (object.package_index !== 0) {
+			const parent = reader.getObject(object.package_index);
+			return reader.getParentObject(parent.object);
+		}
+
+		return object;
 	}
 
 	this.getObjectsByType = function(objectType) {
 		const objects = [];
 
-		for (const entry of self.exportTable) {
-			const objectInfo = self.getObject(entry.class_index);
+		for (const exportObject of reader.exportTable) {
+			const classObject = reader.getObject(exportObject.class_index);
 
-			if (objectInfo !== null && self.nameTable[objectInfo.object.object_name_index] === objectType) {
-				objects.push(entry);
+			if (classObject !== null && objectType === reader.nameTable[classObject.object.object_name_index]) {
+				objects.push(exportObject);
 			}
 		}
 
@@ -945,72 +1924,162 @@ window.UTPackage = function(arrayBuffer) {
 	}
 
 	this.getTextureObjects = function() {
-		return self.getObjectsByType("Texture");
+		return reader.getObjectsByType("Texture");
 	}
 
 	this.getSoundObjects = function() {
-		return self.getObjectsByType("Sound");
+		return reader.getObjectsByType("Sound");
 	}
 
 	this.getMusicObjects = function() {
-		return self.getObjectsByType("Music");
+		return reader.getObjectsByType("Music");
 	}
 
 	this.getTextBufferObjects = function() {
-		return self.getObjectsByType("TextBuffer");
+		return reader.getObjectsByType("TextBuffer");
 	}
 
-	this.getTextBufferData = function(textBufferObject) {
-		const textBuffer = {};
+	this.getLevel = function() {
+		const levels = [];
+		const levelObjects = reader.getObjectsByType("Level");
 
-		const properties = self.getObjectProperties(textBufferObject);
-
-		let offset = properties.offset;
-
-		const pos = self.dword(self.packageData, offset);
-		offset += 4;
-
-		const top = self.dword(self.packageData, offset);
-		offset += 4;
-
-		const textSize = self.index(self.packageData, offset);
-		offset += textSize.length;
-
-		textBuffer.name = self.nameTable[textBufferObject.object_name_index];
-		textBuffer.pos  = pos;
-		textBuffer.top  = top;
-		textBuffer.size = textSize.value;
-
-		if (textSize.value > 0) {
-			const decoder  = new TextDecoder();
-			const textData = new Uint8Array(arrayBuffer.slice(offset, offset + textSize.value - 1));
-
-			textBuffer.contents = decoder.decode(textData);
+		for (const levelObject of levelObjects) {
+			levels.push(new ULevel(levelObject));
 		}
 
+		return levels;
+	}
+
+	this.getAllMeshObjects = function() {
+		const meshes = [];
+
+		for (const object of reader.exportTable) {
+			const name = reader.getObjectNameFromIndex(object.class_index);
+
+			if (reader.meshClasses.includes(name)) meshes.push(object);
+		}
+
+		return meshes;
+	}
+
+	this.getAllBrushObjects = function() {
+		const brushes = [];
+
+		for (const object of reader.exportTable) {
+			const name = reader.getObjectNameFromIndex(object.class_index);
+
+			if (reader.brushClasses.includes(name)) brushes.push(object);
+		}
+
+		return brushes;
+	}
+
+	this.getBrushData = function(brushObject) {
+		const data = {};
+
+		data.brush = {};
+		data.model = {};
+		data.polys = {};
+
+		// Brush
+		data.brush.object = brushObject;
+		data.brush.properties = reader.getObjectProperties(brushObject);
+
+		// Model
+		const modelIndex = data.brush.properties.filter(p => p.name.toLowerCase() === "brush")[0];
+
+		if (modelIndex) {
+			const modelObject = reader.getObject(modelIndex.value);
+			const modelData   = reader.getUModel(modelObject.object);
+
+			data.model.object = modelObject.object;
+			data.model.properties = modelData;
+
+			// Polys
+			if (modelData.polys !== 0) {
+				const polyObject = reader.getObject(modelData.polys);
+				const polysData  = reader.getUPolys(polyObject.object);
+
+				data.polys.object   = polyObject.object;
+				data.polys.polygons = polysData.polys;
+			}
+		}
+
+		return data;
+	}
+
+	this.getAllMeshData = function() {
+		const allMeshData = [];
+		const meshObjects = reader.getAllMeshObjects();
+
+		for (const mesh of meshObjects) {
+			allMeshData.push(reader.getMeshData(mesh));
+		}
+
+		return allMeshData;
+	}
+
+	this.getAllBrushData = function() {
+		const allBrushData = [];
+		const brushObjects = reader.getAllBrushObjects();
+
+		for (const brush of brushObjects) {
+			allBrushData.push(reader.getBrushData(brush));
+		}
+
+		return allBrushData;
+	}
+
+	this.getAnimations = function() {
+		const animations       = [];
+		const animationObjects = reader.getObjectsByType("Animation");
+
+		for (const animationObject of animationObjects) {
+			animations.push(new UAnimation(animationObject));
+		}
+
+		return animations;
+	}
+
+	this.getTextBuffer = function(textBufferObject) {
+		const textBuffer = new UTextBuffer(textBufferObject);
+
 		if (textBufferObject.package_index !== 0) {
-			textBuffer.package = self.getParentPackageName(textBufferObject);
+			textBuffer.package = reader.getParentPackageName(textBufferObject);
 		}
 
 		return textBuffer;
 	}
 
+	this.getFonts = function() {
+		const fonts       = [];
+		const fontObjects = reader.getObjectsByType("Font");
+
+		for (const fontObject of fontObjects) {
+			fonts.push(new UFont(fontObject));
+		}
+
+		return fonts;
+	}
+
 	this.getTextureInfo = function(textureObject) {
-		const objectInfo = self.getObject(textureObject.package_index);
+		const objectInfo = reader.getObject(textureObject.package_index);
 
 		return {
-			name  : self.nameTable[textureObject.object_name_index],
-			group : objectInfo ? self.nameTable[objectInfo.object.object_name_index] : null,
+			name  : reader.nameTable[textureObject.object_name_index],
+			group : objectInfo ? reader.nameTable[objectInfo.object.object_name_index] : null,
 		}
 	}
 
 	this.getTexturesGrouped = function() {
+		const textures  = reader.getTextureObjects();
 		const grouped   = {};
 		const ungrouped = [];
+
 		let total = 0;
 
-		for (const textureObject of self.getTextureObjects()) {
-			const textureInfo = self.getTextureInfo(textureObject);
+		for (const textureObject of textures) {
+			const textureInfo = reader.getTextureInfo(textureObject);
 
 			if (textureInfo.group) {
 				if (typeof grouped[textureInfo.group] === "array") {
@@ -1033,79 +2102,52 @@ window.UTPackage = function(arrayBuffer) {
 	}
 
 	this.getParentPackageName = function(object) {
-		const parentPackage = self.getObject(object.package_index).object;
-		return self.nameTable[parentPackage.object_name_index];
+		const parentPackage = reader.getObject(object.package_index).object;
+		return reader.nameTable[parentPackage.object_name_index];
 	}
 
-	/*this.getMusicInfo = function(musicObject) {
-		const musicInfo = {};
+	this.getMusic = function(musicObject) {
+		return new UMusic(musicObject);
+	}
 
-		let offset = musicObject.serial_offset;
-
-		const chunkCount = self.word(self.packageData, offset);
-		offset += 2;
-
-		console.log("chunkCount", chunkCount);
-
-		if (self.version > 61) {
-			const chunkSizeOffset = self.dword(self.packageData, offset);
-			offset == chunkSizeOffset;
-
-			console.log("chunkSizeOffset", chunkSizeOffset);
-		}
-
-		const chunkSize = self.index(self.packageData, offset);
-		offset += chunkSize.length;
-
-		console.log("chunkSize", chunkSize);
-
-		return musicInfo;
-	}*/
+	this.getSound = function(soundObject) {
+		return new USound(soundObject);
+	}
 
 	this.getSounds = function() {
 		const sounds       = [];
-		const soundObjects = self.getSoundObjects();
+		const soundObjects = reader.getSoundObjects();
+
+		// Used to check for additional metadata
+		const WAVE_FORMAT_PCM   = 0x01;
+		const SUBCHUNK_SIZE_PCM = 0x10;
 
 		for (const soundObject of soundObjects) {
-			const sound = {};
-
-			sound.name = self.nameTable[soundObject.object_name_index];
+			const sound = new USound(soundObject);
 
 			// Attempt to get this sound's package name
 			if (soundObject.package_index !== 0) {
-				sound.package = self.getParentPackageName(soundObject);
+				sound.package = reader.getParentPackageName(soundObject);
 			}
 
-			const properties = self.getObjectProperties(soundObject, soundObject.object_flags);
-
-			let offset = properties.offset;
-
-			const format = self.index(self.packageData, offset);
-			offset += format.length;
-
-			if (self.version >= 63) {
-				const nextObjectOffset = self.dword(self.packageData, offset);
-				offset += 4;
-
-				sound.next_object_offset = nextObjectOffset;
+			// Not all sound files are PCM - e.g. ultra trash map CTF-BT-SuckmeToo seems to contain some kind of compressed audio.
+			// Additionally, some files contain extra metadata so the values below cannot be accurately read unless using a more
+			// sophisticated WAVE audio reading method.
+			if (
+				   sound.format.toUpperCase() === "WAV"
+				&& reader.dataView.getUint16(sound.audio_offset + 16, true) === SUBCHUNK_SIZE_PCM
+				&& reader.dataView.getUint16(sound.audio_offset + 20, true) === WAVE_FORMAT_PCM
+			) {
+				sound.channels    = reader.dataView.getUint16(sound.audio_offset + 22, true);
+				sound.sample_rate = reader.dataView.getUint32(sound.audio_offset + 24, true);
+				sound.byte_rate   = reader.dataView.getUint32(sound.audio_offset + 28, true);
+				sound.bit_depth   = reader.dataView.getUint16(sound.audio_offset + 34, true);
 			}
-
-			const size = self.index(self.packageData, offset);
-			offset += size.length;
-
-			sound.properties   = properties.props;
-			sound.format       = self.nameTable[format.value];
-			sound.audio_offset = offset;
-			sound.audio_size   = size.value;
 
 			sounds.push(sound);
 		}
 
 		return sounds;
-	}
-
-	this.getSoundData = function(audioOffset, audioSize) {
-		return new Uint8Array(arrayBuffer.slice(audioOffset, audioOffset + audioSize));
 	}
 
 	this.getLightHsl = function(lightObject) {
@@ -1116,9 +2158,9 @@ window.UTPackage = function(arrayBuffer) {
 			l : 25
 		}
 
-		const properties = self.getObjectProperties(lightObject, lightObject.object_flags);
+		const properties = reader.getObjectProperties(lightObject);
 
-		for (const prop of properties.props) {
+		for (const prop of properties) {
 			switch (prop.name.toLowerCase()) {
 				// Degree in colour wheel
 				case "lighthue":
@@ -1142,120 +2184,19 @@ window.UTPackage = function(arrayBuffer) {
 		return hsl;
 	}
 
-	this.getPolyInfo = function(polyObject) {
-		const polyInfo = [];
-		const properties = self.getObjectProperties(polyObject, polyObject.object_flags);
+	this.getUModel = function(modelObject) {
+		return new UModel(modelObject);
+	}
 
-		let offset = properties.offset;
-
-		const polyCount = self.dataView.getUint32(offset, true);
-		offset += 4;
-
-		// why is this dword repeated?
-		offset += 4;
-
-		const polyProperties = [
-			"origin",
-			"normal",
-			"texture_u",
-			"texture_v",
-		];
-
-		for (let i = 0; i < polyCount; i++) {
-			const poly = {};
-
-			const vertexCount = self.dataView.getUint8(offset);
-			offset++;
-
-			// Get poly properties first, then [vertexCount] vertices thereafter
-			for (const prop of polyProperties) {
-				poly[prop] = {};
-
-				poly[prop].x = self.dataView.getFloat32(offset, true);
-				offset += 4;
-
-				poly[prop].y = self.dataView.getFloat32(offset, true);
-				offset += 4;
-
-				poly[prop].z = self.dataView.getFloat32(offset, true);
-				offset += 4;
-			}
-
-			// Get vertices
-			poly.vertices = [];
-
-			for (let i = 0; i < vertexCount; i++) {
-				const vertex_x = self.dataView.getFloat32(offset, true);
-				offset += 4;
-
-				const vertex_y = self.dataView.getFloat32(offset, true);
-				offset += 4;
-
-				const vertex_z = self.dataView.getFloat32(offset, true);
-				offset += 4;
-
-				poly.vertices.push({
-					x: vertex_x,
-					y: vertex_y,
-					z: vertex_z,
-				})
-			}
-
-			// Get poly "attributes"
-			const flags = self.dataView.getUint32(offset, true);
-			poly.flags = self.getPolyFlags(flags);
-			offset += 4;
-
-			const polyActor = self.index(self.packageData, offset);
-			poly.actor = polyActor.value;
-			offset += polyActor.length;
-
-			const polyTexture = self.index(self.packageData, offset);
-			const polyTextureObject = self.getObject(polyTexture.value);
-
-			if (polyTextureObject) {
-				poly.texture = package.nameTable[polyTextureObject.object.object_name_index];
-			}
-
-			offset += polyTexture.length;
-
-			const polyItemName = self.index(self.packageData, offset);
-			poly.item_name = package.nameTable[polyItemName.value];
-			offset += polyItemName.length;
-
-			const polyLink = self.index(self.packageData, offset);
-			poly.link = polyLink.value;
-			offset += polyLink.length;
-
-			const brushPoly = self.index(self.packageData, offset);
-			poly.brush_poly = brushPoly.value;
-			offset += brushPoly.length;
-
-			let panU = self.word(self.packageData, offset);
-
-			if (panU > 0x8000) panU |= 0xFFFF0000;
-
-			poly.pan_u = panU;
-			offset += 2;
-
-			let panV = self.word(self.packageData, offset);
-
-			if (panV > 0x8000) panV |= 0xFFFF0000;
-
-			poly.pan_v = panV;
-			offset += 2;
-
-			polyInfo.push(poly);
-		}
-
-		return polyInfo;
+	this.getUPolys = function(polysObject) {
+		return new UPolys(polysObject);
 	}
 
 	this.getPolyFlags = function(flags) {
 		const polyFlags = [];
 
-		for (const flagName in self.polyFlags) {
-			const flagVal = self.polyFlags[flagName];
+		for (const flagName in reader.polyFlags) {
+			const flagVal = reader.polyFlags[flagName];
 
 			if (flagVal > flags) break;
 
@@ -1267,40 +2208,32 @@ window.UTPackage = function(arrayBuffer) {
 		return polyFlags;
 	}
 
-	this.getPaletteData = function(paletteObject) {
-		// Get palette properties to find out where the actual data begins
-		const paletteProperties = self.getObjectProperties(paletteObject);
+	this.getMeshData = function(meshObject) {
+		return new UMesh(meshObject);
+	}
 
-		// Adjust offset taking into account property length
-		let offset = paletteProperties.offset;
+	this.getLodMeshData = function(lodMeshObject) {
+		return new ULodMesh(lodMeshObject);
+	}
 
-		// First byte of palette contains total colours. Each byte afterwards are RGBA values.
-		const paletteSize = self.index(self.packageData, offset);
-		offset += paletteSize.length;
+	this.getSkeletalMeshData = function(skeletalMeshObject) {
+		return new USkeletalMesh(skeletalMeshObject);
+	}
 
-		const colourData = [];
+	this.getSkelModel = function(skelModelObject) {
+		return new USkelModel(skelModelObject);
+	}
 
-		for (let i = 0; i < paletteSize.value; i++) {
-			colourData.push({
-				r : self.packageData[offset++],
-				g : self.packageData[offset++],
-				b : self.packageData[offset++],
-				a : self.packageData[offset++],
-			})
-		}
-
-		return {
-			colours : colourData,
-			length  : paletteSize.value,
-		}
+	this.getPalette = function(paletteObject) {
+		return new UPalette(paletteObject);
 	}
 
 	this.getPaletteObjectFromTexture = function(textureObject) {
-		const textureProperties = self.getObjectProperties(textureObject, textureObject.object_flags);
+		const textureProperties = reader.getObjectProperties(textureObject);
 
-		for (const prop of textureProperties.props) {
+		for (const prop of textureProperties) {
 			if (prop.name.toLowerCase() === "palette") {
-				return self.getObject(prop.value);
+				return reader.getObject(prop.value).object;
 			}
 		}
 
@@ -1308,8 +2241,8 @@ window.UTPackage = function(arrayBuffer) {
 	}
 
 	this.getPaletteCanvas = function(textureObject, callback) {
-		const paletteObject = self.getPaletteObjectFromTexture(textureObject);
-		const paletteData   = self.getPaletteData(paletteObject.object);
+		const paletteObject = reader.getPaletteObjectFromTexture(textureObject);
+		const paletteData   = reader.getPalette(paletteObject);
 
 		const canvas  = document.createElement("canvas");
 		const context = canvas.getContext("2d");
@@ -1326,7 +2259,7 @@ window.UTPackage = function(arrayBuffer) {
 				imageData.data[i++] = pixel.r;
 				imageData.data[i++] = pixel.g;
 				imageData.data[i++] = pixel.b;
-				imageData.data[i++] = pixel.a;
+				imageData.data[i++] = 0xFF; // See explanation in textureToCanvas()
 			}
 
 			context.putImageData(imageData, 0, 0);
@@ -1337,105 +2270,111 @@ window.UTPackage = function(arrayBuffer) {
 		return paletteData;
 	}
 
+	this.getTexture = function(textureObject) {
+		return new UTexture(textureObject);
+	}
+
 	this.getTextureData = function(textureObject) {
-		const textureProperties = self.getObjectProperties(textureObject, textureObject.object_flags);
+		const texture = reader.getTexture(textureObject);
 
 		// Find this texture's palette object
-		const paletteObject = self.getPaletteObjectFromTexture(textureObject);
+		const paletteObject = reader.getPaletteObjectFromTexture(textureObject);
 
 		// Get palette colour data
-		const paletteData = self.getPaletteData(paletteObject.object);
+		const paletteData = reader.getPalette(paletteObject);
 
-		// Texture data begins after the properties; use the offset returned from getObjectProperties()
-		let offset = textureProperties.offset;
+		texture.palette = paletteData;
 
-		// First byte is mipmap count
-		const mipMapCount = self.packageData[offset++];
-
-		const textureData = {};
-
-		for (let i = 0; i < mipMapCount; i++) {
-			if (self.header.version >= 63) {
-				const widthOffset = self.dword(self.packageData, offset);
-				offset += 4;
-			}
-
-			const mipMapSize = self.index(self.packageData, offset);
-			offset += mipMapSize.length;
-
-			// Mip map data array - one byte = one pixel
-			const mipMapData = new Uint8Array(arrayBuffer.slice(offset, offset + mipMapSize.value));
-			offset += mipMapSize.value;
-
-			const textureWidth  = self.dword(self.packageData, offset);
-			offset += 4;
-
-			const textureHeight = self.dword(self.packageData, offset);
-			offset += 4;
-
-			textureData.palette        = paletteData;
-			textureData.mip_map_count  = mipMapCount;
-			textureData.mip_map_size   = mipMapSize;
-			textureData.texture_width  = textureWidth;
-			textureData.texture_height = textureHeight;
-			textureData.mip_map_data   = mipMapData;
-
-			// to-do: handle compressed mip maps
-			break;
-		}
-
-		return textureData;
+		return texture;
 	}
 
 	this.textureToCanvas = function(textureObject, callback) {
 		const canvas  = document.createElement("canvas");
 		const context = canvas.getContext("2d");
 
-		const textureData = self.getTextureData(textureObject);
+		const textureData = reader.getTextureData(textureObject);
 
-		canvas.width  = textureData.texture_width;
-		canvas.height = textureData.texture_height;
+		canvas.width  = textureData.mip_maps[0].width;
+		canvas.height = textureData.mip_maps[0].height;
 
 		const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
 
 		createImageBitmap(imageData).then(function(imageBitmap) {
 			let i = 0;
 
-			for (const pixel of textureData.mip_map_data) {
+			for (const pixel of textureData.mip_maps[0].data) {
 				const colour = textureData.palette.colours[pixel];
 
 				imageData.data[i++] = colour.r;
 				imageData.data[i++] = colour.g;
 				imageData.data[i++] = colour.b;
-				imageData.data[i++] = colour.a;
+				// imageData.data[i++] = colour.a;
+
+				// Newer versions use alpha channel, but this doesn't seem to be
+				// consistent in older packages, e.g. Faces.utx has alpha set to 0
+				imageData.data[i++] = 0xFF;
 			}
 
 			context.putImageData(imageData, 0, 0);
 
-			callback(canvas, imageBitmap);
+			callback({
+				canvas : canvas,
+				bitmap : imageBitmap,
+				name   : textureData.object_name,
+			})
 		})
 	}
 
 	this.getScreenshot = function(callback) {
-		const screenshotObject = self.getObjectByName("Screenshot");
+		// Multiple screenshots can be embedded to create a montage effect by naming MyLevel textures "Screenshot2" etc.
+		const screenshotRegEx = new RegExp("^Screenshot([0-9]+)?$", "i");
+		const screenshotNames = reader.nameTable.filter(name => screenshotRegEx.test(name));
+		let screenshotObjects = screenshotNames.map(name => reader.getObjectByName(name));
+
+		// "Screenshot" may be present in name table but may erroneously point to an import table object (e.g. CTF-BT-Brazilian-novice)
+		screenshotObjects = screenshotObjects.filter(s => s !== null);
 
 		let screenshotFound = false;
 
-		if (screenshotObject) {
-			self.textureToCanvas(screenshotObject, callback);
+		if (screenshotObjects.length > 0) {
+			const screenshots = [];
+
+			for (let i = 0; i < screenshotObjects.length; i++) {
+				reader.textureToCanvas(screenshotObjects[i], function(screenshot) {
+					screenshots.push(screenshot);
+
+					if (screenshots.length === screenshotObjects.length) {
+						// Sort numerically as name table doesn't guarantee order
+						screenshots.sort((a, b) => Number(a.name.substring("Screenshot".length)) - Number(b.name.substring("Screenshot".length)));
+						callback(screenshots);
+					}
+				})
+			}
+
 			screenshotFound = true;
-		} else {
+		}
+
+		else {
 			// Officially, the map screenshot should be named "Screenshot"; however, it's possible to set this value
 			// to a different texture. It won't appear in-game, but is still saved in the LevelSummary actor.
-			const levelInfoObject = self.getObjectByName("LevelInfo0");
+			const levelInfoObject = reader.getObjectByName("LevelInfo0");
 
 			if (levelInfoObject) {
-				const levelInfoProps = self.getObjectProperties(levelInfoObject, levelInfoObject.object_flags);
+				const levelInfoProps = reader.getObjectProperties(levelInfoObject);
 
-				for (const prop of levelInfoProps.props) {
+				for (const prop of levelInfoProps) {
 					if (prop.name === "Screenshot") {
-						self.textureToCanvas(self.getObject(prop.value).object, callback);
-						screenshotFound = true;
+						const invalidScreenshot = reader.getObject(prop.value);
+
+						// Final check - can't show screenshot if it's linked to an external package.
+						if (invalidScreenshot.table !== "import") {
+							reader.textureToCanvas(invalidScreenshot.object, function(screenshot) {
+								callback([screenshot]); // return as array for consistency
+							})
+
+							screenshotFound = true;
+						}
+
 						break;
 					}
 				}
@@ -1443,16 +2382,16 @@ window.UTPackage = function(arrayBuffer) {
 		}
 
 		if (!screenshotFound) {
-			callback(null);
+			callback([]);
 		}
 	}
 
 	this.getLevelSummary = function(allProperties = false) {
 		const levelSummary    = {};
-		const levelInfoObject = self.getObjectByName("LevelInfo0");
+		const levelInfoObject = reader.getObjectByName("LevelInfo0");
 
 		if (levelInfoObject) {
-			const properties = self.getObjectProperties(levelInfoObject, levelInfoObject.object_flags);
+			const properties = reader.getObjectProperties(levelInfoObject);
 
 			// If allProperties == false, only include these
 			const meaningfulProperties = ["Author", "IdealPlayerCount", "LevelEnterText", "Screenshot", "Song", "Title"];
@@ -1460,10 +2399,10 @@ window.UTPackage = function(arrayBuffer) {
 			// Lookup these properties in the name table
 			const tableLookup = ["Song", "DefaultGameType", "Summary", "NavigationPointList", "Level"];
 
-			for (const prop of properties.props) {
+			for (const prop of properties) {
 				if (allProperties || meaningfulProperties.includes(prop.name)) {
 					if (tableLookup.includes(prop.name)) {
-						levelSummary[prop.name] = self.nameTable[self.getObject(prop.value).object.object_name_index];
+						levelSummary[prop.name] = reader.nameTable[reader.getObject(prop.value).object.object_name_index];
 					} else {
 						levelSummary[prop.name] = prop.value;
 					}
@@ -1480,23 +2419,23 @@ window.UTPackage = function(arrayBuffer) {
 		const dependencies = [];
 
 		// Check dependencies against the file's "Song" name (if it's a map).
-		const levelMusic = self.getLevelSummary()["Song"];
+		const levelMusic = reader.getLevelSummary()["Song"];
 
-		for (const entry of self.importTable) {
-			if (self.nameTable[entry.class_name_index] === "Package" && entry.package_index === 0) {
+		for (const entry of reader.importTable) {
+			if (reader.nameTable[entry.class_name_index] === "Package" && entry.package_index === 0) {
 				const dependency = {
-					name: self.nameTable[entry.object_name_index]
+					name: reader.nameTable[entry.object_name_index]
 				}
 
-				const fileExt   = self.defaultPackages[dependency.name.toLowerCase()];
+				const fileExt   = reader.defaultPackages[dependency.name.toLowerCase()];
 				const isDefault = !!fileExt;
 
 				if (isDefault) {
 					dependency.ext  = fileExt;
-					dependency.type = self.fileTypes[dependency.ext];
+					dependency.type = reader.fileTypes[dependency.ext];
 				} else if (dependency.name === levelMusic) {
 					dependency.ext  = "umx";
-					dependency.type = self.fileTypes[dependency.ext];
+					dependency.type = reader.fileTypes[dependency.ext];
 				}
 
 				dependency.default = isDefault;
@@ -1509,8 +2448,9 @@ window.UTPackage = function(arrayBuffer) {
 	}
 
 	this.getDependenciesFiltered = function(ignoreCore = true) {
-		const ignore = ["botpack", "core", "engine", "unreali", "unrealshare", "uwindow"];
-		const dependencies = {
+		const dependencies = reader.getDependencies();
+		const ignore       = ["botpack", "core", "engine", "unreali", "unrealshare", "uwindow"];
+		const filtered     = {
 			length   : 0,
 			packages : {
 				default : [],
@@ -1518,25 +2458,93 @@ window.UTPackage = function(arrayBuffer) {
 			}
 		}
 
-		for (const dep of self.getDependencies()) {
+		for (const dep of dependencies) {
 			if (dep.default) {
 				if (ignoreCore && ignore.includes(dep.name.toLowerCase())) continue;
 
-				dependencies.packages.default.push(dep);
+				filtered.packages.default.push(dep);
 			} else {
-				dependencies.packages.custom.push(dep);
+				filtered.packages.custom.push(dep);
 			}
 
-			dependencies.length++;
+			filtered.length++;
 		}
 
-		return dependencies;
+		return filtered;
 	}
 
-	// Assign these at runtime as they're referenced in many functions.
-	this.header      = this.getHeader();
-	this.version     = this.header.version;
-	this.nameTable   = this.getNameTable();
-	this.exportTable = this.getExportTable();
-	this.importTable = this.getImportTable();
+	this.getClassesCount = function() {
+		const counts = {};
+
+		for (const object of reader.exportTable) {
+			const name = reader.getObjectNameFromIndex(object.class_index).toLowerCase();
+
+			if (counts[name] !== undefined) {
+				counts[name]++;
+			} else {
+				counts[name] = 1;
+			}
+		}
+
+		return counts;
+	}
+
+	/**
+	 * UMOD file functions - incomplete
+	 */
+	this.readUMOD = function() {
+		reader.header     = reader.getUMODHeader();
+		reader.umod_files = reader.getUMODFiles();
+
+		const filenames = reader.umod_files.map(f => f.name);
+	}
+
+	this.getUMODHeader = function() {
+		const header = {};
+
+		// Header is 20 bytes, at the end of the file
+		reader.seek(reader.dataView.byteLength - 20);
+
+		header.signature = reader.getUint32();
+
+		if (header.signature !== SIGNATURE_UMOD) {
+			throw `Invalid UMOD signature: 0x${header.signature.toString(16).padStart(8, 0)}`;
+		}
+
+		header.directory_start = reader.getUint32();
+		header.umod_size       = reader.getUint32();
+		header.version         = reader.getUint32();
+		header.crc             = reader.getUint32();
+
+		return header;
+	}
+
+	this.getUMODFiles = function() {
+		reader.seek(reader.header.directory_start);
+
+		const files = new Array(reader.getCompactIndex());
+
+		for (let i = 0; i < files.length; i++) {
+			files[i] = new UMODFile();
+		}
+
+		return files;
+	}
+
+	/**
+	 * UZ file functions - incomplete
+	 */
+	this.readUZ = function() {
+		const uz = {};
+
+		uz.signature = reader.getUint32();
+
+		if (!SIGNATURE_UZ.includes(uz.signature)) {
+			throw `Invalid UZ signature: ${uz.signature}`;
+		}
+
+		uz.filename = reader.getSizedText();
+
+		const total = reader.getUint32();
+	}
 }
