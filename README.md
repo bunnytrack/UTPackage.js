@@ -1,41 +1,52 @@
+<!--
+    TODO:
+      * include gif(s)
+      * update .js for iLeaf on github AND bt.net
+-->
+
 # UTPackage.js
 ---
-***Note:** this is now slightly out of date and will be updated properly at… some point. See demo site below for current usage.*
+A JavaScript plugin for reading [Unreal Tournament](https://en.wikipedia.org/wiki/Unreal_Tournament) package data. This has been successfully tested with a few other Unreal Engine 1 games including Deus Ex, Rune, Harry Potter and the Philosopher's Stone/Chamber of Secrets, Clive Barker's Undying, Nerf Arena Blast, and The Wheel of Time.
 
-A simple JavaScript plugin for reading [Unreal Tournament](https://en.wikipedia.org/wiki/Unreal_Tournament) package data.
+This plugin is largely based on the following package-readers:
 
-Based almost entirely on Feralidragon's [PHP UPackage](https://ut99.org/viewtopic.php?t=4796), this is essentially a JavaScript rewrite with some extra features for use in web applications (e.g. Canvas and audio elements for textures and sounds).
+* [PHP UPackage](https://ut99.org/viewtopic.php?t=4796) by Feralidragon
+* [Unreal Tournament Package Tool](https://www.acordero.org/projects/unreal-tournament-package-tool/) by Antonio Cordero Balcázar
 
-**N.B.** this plugin is still in development and some features (such as parsing embedded music) are not yet available.
+The main difference between UTPackage.js and the above readers (besides the programming language) is that this is web-oriented, providing textures as [Canvas](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API) objects and brush geometry in a format suitable for use with [three.js](https://threejs.org/), for example.
 
 ## Demo
-Visit https://bunnytrack.net/package-explorer/ to see this plugin in use.
+Visit https://bunnytrack.net/package-explorer/ and drag a UT package (map, texture, sound, etc.) to see what the plugin is capable of:
+
+![Squid model shown using three.js](https://im7.ezgif.com/tmp/ezgif-7-b4fe91316e02.gif)
+![DM-Pyramid wireframe shown using three.js](https://im7.ezgif.com/tmp/ezgif-7-6cdff2e2ef15.gif)
+![Pulse Gun wireframe shown using three.js](https://im7.ezgif.com/tmp/ezgif-7-ca8e478793d5.gif)
 
 ---
 
 ## Usage
-Create an instance of UTPackage by passing an `ArrayBuffer` as the only argument:
+Create an instance of UTReader by passing an `ArrayBuffer` as the only argument:
 
 ```js
-const package = new UTPackage(arrayBuffer);
+const reader = new UTReader(arrayBuffer);
 ```
 
 **Example with HTML**
 ```html
 <input type="file" id="file-input" />
 
-<script src="UTPackage.js"></script>
+<script src="./UTReader.js"></script>
 <script>
     document.getElementById("file-input").addEventListener("input", function() {
-        if (this.files.length > 0) {
-            const file       = this.files[0];
+        for (const file of this.files) {
             const fileReader = new FileReader();
 
             fileReader.onload = function() {
-                const package = new UTPackage(this.result);
+                const reader  = new UTReader(this.result);
+                const package = reader.readPackage();
 
                 // Get package version
-                console.log(package.version); // 68
+                console.log(package.version); // 69
             }
 
             fileReader.readAsArrayBuffer(file);
@@ -47,30 +58,22 @@ const package = new UTPackage(arrayBuffer);
 ---
 
 ## Properties
-| Name              | Type                | Description                                                                                                                   |
-| ---               | ---                 | ---                                                                                                                           |
-| `dataView`        | `DataView` object   | A [`DataView`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DataView) of the package.     |
-| `packageData`     | `Uint8Array` object | A [`Uint8Array`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array) of the package. |
-| `propertyTypes`   | array               | The standard UT package format property types.                                                                                |
-| `fileTypes`       | object              | The standard UT file extensions and their corresponding package type (e.g. `"utx": "Texture"`).                               |
-| `defaultPackages` | object              | The default UT GOTY filenames and their corresponding extension (e.g. `"city": "utx"`).                                       |
-| `header`          | object              | Package header.                                                                                                               |
-| `version`         | int                 | Package version.                                                                                                              |
-| `nameTable`       | array               | Package name table.                                                                                                           |
-| `importTable`     | array               | Package import table.                                                                                                         |
-| `exportTable`     | array               | Package export table.                                                                                                         |
+| Name          | Type   | Description                                                                                                               |
+| ---           | ---    | ---                                                                                                                       |
+| `dataView`    | Object | A [`DataView`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DataView) of the package. |
+| `header`      | Object | Package header.                                                                                                           |
+| `version`     | Int    | Package version.                                                                                                          |
+| `nameTable`   | Array  | Package name table.                                                                                                       |
+| `importTable` | Array  | Package import table.                                                                                                     |
+| `exportTable` | Array  | Package export table.                                                                                                     |
 
 ---
 
 ## Methods
-Currently only the most useful methods for web applications are documented here. See source code for all methods.
+The most useful methods have been documented here, although there are several more available in the source (most of which are in use on the demo page linked above).
 
----
+### `getLevelSummary(allProperties = false : Bool)` returns *Object*
 
-#### getLevelSummary
-```js
-getLevelSummary([bool allProperties = false]) : object
-```
 Returns an object containing level details. The object will be empty if the package is not a map file (i.e. does not contain a `LevelInfo`) actor.
 
 When `allProperties` is `false`, only the following level properties are returned: `Author`, `IdealPlayerCount`, `LevelEnterText`, `Screenshot`, `Song`, `Title`.
@@ -83,7 +86,7 @@ These properties are read directly from the `LevelInfo0` actor which is present 
 
 _`allProperties = false`_
 
-```js
+```json
 {
     "Author"           : "Cedric 'Inoxx' Fiorentino",
     "IdealPlayerCount" : "4-10",
@@ -95,7 +98,7 @@ _`allProperties = false`_
 
 _`allProperties = true`_
 
-```js
+```json
 {
     "TimeSeconds": 174.3309326171875,
     "Title": "Facing Worlds",
@@ -112,7 +115,7 @@ _`allProperties = true`_
     "DefaultGameType": "CTFGame",
     "NavigationPointList": "InventorySpot167",
     "AIProfile": 201077017,
-    "AvgAITime": 5.877478059954527e-39,
+    "AvgAITime": 1.2611686178923354e-44,
     "AmbientBrightness": 4,
     "TexUPanSpeed": 2,
     "Level": "LevelInfo0",
@@ -123,9 +126,9 @@ _`allProperties = true`_
         "zone_number": 0
     },
     "Location": {
-        "x": -12869,
-        "y": -1454,
-        "z": -1
+        "x": -19899,
+        "y": -2642,
+        "z": -32767
     },
     "Rotation": {
         "pitch": 0,
@@ -137,57 +140,51 @@ _`allProperties = true`_
 
 ---
 
-#### getScreenshot
-```js
-getScreenshot(function callback) : void
-```
-Asynchronously extracts a map file's screenshot texture, passing it as a parameter in the provided `callback` function.
+### `getScreenshot(callback : Function)` returns *Array*
+Asynchronously extracts a map's screenshot texture(s) and returns an array of Canvas objects in the provided callback function.
 
 In order for UT to be able to display a map screenshot in-game, the screenshot must be named `Screenshot` and saved in the `MyLevel` pseudo-package; some mappers, however, have not named the texture correctly (e.g. BT-SlaughterCB) or have erroneously set the `Screenshot` property to a texture within a different package.
 
 This function attempts to extract the screenshot even if it is set incorrectly, although it is not always possible to do so (e.g. when the texture is part of an external package).
 
-If available, the screenshot is extracted into a HTML `Canvas` element; otherwise a `null` value is returned.
+An array is returned as multiple screenshots may be embedded to create a slideshow/montage effect if named sequentially, i.e. "Screenshot1", "Screenshot2", etc.
 
-Currently, only the first screenshot is returned for maps with a "slideshow" screenshot.
+An empty array is returned if no screenshots are found.
 
 **Example**
 
 ```js
-package.getScreenshot(function(canvas) {
-    if (canvas) {
-        document.getElementById("screenshot").append(canvas);
+package.getScreenshot(function(screenshotArray) {
+    if (screenshotArray.length > 0) {
+        // Do something with the screenshots
     } else {
-        // No screenshot available
+        // No screenshots available
     }
 })
 ```
 
 ---
 
-#### getDependencies
-```js
-getDependencies() : array
-```
+### `getDependencies()` returns *Array*
 Returns an array of dependencies (i.e. other packages) required for this package to be used.
 
 The return value is an array of objects. Each object will always have a `name` and `default` property (`string` and `bool` respectively) and may also contain `ext` and `type` properties (both `string`).
 
-**Example output for BT-Mesablanca**
+**Example using BT-Mesablanca**
 ```js
 [
-    // A default texture package dependency
+    // Crypt2.utx - a default texture package dependency
     {
-        "name": "Crypt2",
-        "ext": "utx",
-        "type": "Texture",
-        "default": true
+        "name"    : "Crypt2",
+        "ext"     : "utx",
+        "type"    : "Texture",
+        "default" : true
     },
 
     // Non-default dependency; type unknown
     {
-        "name": "BT2",
-        "default": false
+        "name"    : "BT2",
+        "default" : false
     },
 
     // etc.
@@ -196,34 +193,31 @@ The return value is an array of objects. Each object will always have a `name` a
 
 ---
 
-#### getDependenciesFiltered
-```js
-getDependenciesFiltered([bool ignoreCore = true]) : object
-```
+### `getDependenciesFiltered(ignoreCore = true : Bool)` returns *Object*
 Returns an object containing a `packages` property which contains two arrays: `default` and `custom`. A `length` property is also included.
 
 This function is essentially the same as `getDependencies` with the return value filtered into default/non-default dependency arrays.
 
 When `ignoreCore` is `true`, several core UT files which are used by the vast majority of packages (such as `Core.u` and `Engine.u`) are excluded from the return value.
 
-**Example output for BT-Mesablanca**
+**Example using BT-Mesablanca**
 ```js
 {
     "length": 30,
     "custom": [
         {
-            "name": "SS3rdWorld",
-            "default": false
+            "name"    : "SS3rdWorld",
+            "default" : false
         },
 
         // etc.
     ],
     "default": [
         {
-            "name": "DoorsAnc",
-            "ext": "uax",
-            "type": "Sound",
-            "default": true
+            "name"    : "DoorsAnc",
+            "ext"     : "uax",
+            "type"    : "Sound",
+            "default" : true
         },
 
         // etc.
@@ -233,56 +227,45 @@ When `ignoreCore` is `true`, several core UT files which are used by the vast ma
 
 ---
 
-#### getTextureObjects
-```js
-getTextureObjects() : array
-```
-Returns an array of export table object details for textures embedded within the package.
+### `getTextureObjects()` returns *Array*
+Returns an array of texture export table objects.
 
-**N.B.** a _package_ object is not the same as a JavaScript object. A package object can be thought of a chunk of data within the file, usually containing a list of properties followed by the data itself.
-
-**Example output for BT-BehindSunrise**
+**Example using BT-BehindSunrise**
 ```js
 [
     {
-        "class_index": -39,
-        "super_index": 0,
-        "package_index": 0,
-        "object_name_index": 599,
-        "object_flags": 983044,
-        "serial_size": 22027,
-        "serial_offset": 29774
+        "class_index"       : -39,
+        "super_index"       : 0,
+        "package_index"     : 0,
+        "object_name_index" : 599,
+        "object_flags"      : 983044,
+        "serial_size"       : 22027,
+        "serial_offset"     : 29774
     },
 
     // etc.
 ]
 ```
 
-The properties listed in the example above can then be used to ascertain further details about that texture (its name, image data, etc.).
+The properties listed in the example above can then be used to ascertain further details about that texture (its name, image data, etc).
 
 ---
 
-#### getTextureInfo
-```js
-getTextureInfo(object textureObject) : object
-```
+### `getTextureInfo(textureObject : Object)` returns *Object*
 Returns the texture's name and group (if available).
 
-**Example output using the texture object above**
-```js
+**Example using the texture object above**
+```json
 {
-    "name": "trims2",
-    "group": null
+    "name"  : "trims2",
+    "group" : null
 }
 ```
 
 ---
 
-#### textureToCanvas
-```js
-textureToCanvas(object textureObject, function callback) : void
-```
-Essentially the same as the `getScreenshot` method, however the first parameter must be a texture object.
+### `textureToCanvas(textureObject : Object, callback : Function)` returns *Object*
+Returns to the callback function a single object containing a Canvas, [ImageBitmap](https://developer.mozilla.org/en-US/docs/Web/API/ImageBitmap) interface, and the texture name.
 
 **Example**
 
@@ -291,108 +274,251 @@ Essentially the same as the `getScreenshot` method, however the first parameter 
 const textureObjects = package.getTextureObjects();
 
 // Extract the first texture then append it to a container element
-package.textureToCanvas(textureObjects[0], function(canvas) {
-    document.getElementById("texture-container").append(canvas);
+package.textureToCanvas(textureObjects[0], function(texture) {
+
+    // Texture name, e.g. "C_wall2a"
+    console.log("Appending canvas for texture:", texture.name);
+
+    // Append canvas to the DOM
+    document.getElementById("texture-container").append(texture.canvas);
+
 })
 ```
 
 ---
 
-#### getSounds
-```js
-getSounds() : array
-```
+### `getSounds()` returns *Array*
 Returns an array of objects, each containing details of the package's sound objects.
 
-**Example output for BT-BehindSunrise**
+Where possible, extra data is included from WAV file headers.
+
+**Example using BT-BehindSunrise**
 ```js
 [
     {
-        "name": "islice",
-        "format": "WAV",
-        "audio_offset": 4645786,
-        "audio_size": 19822
-        "next_object_offset": 4665608,
-        "properties": [],
+        "object_name"        : "islice",
+        "properties"         : [],
+        "format"             : "WAV",
+        "next_object_offset" : 4665608,
+        "size"               : 19822,
+        "audio_offset"       : 4645786,
+        "channels"           : 1,     // PCM WAV data
+        "sample_rate"        : 22050, // PCM WAV data
+        "byte_rate"          : 22050, // PCM WAV data
+        "bit_depth"          : 8      // PCM WAV data
     },
 
     // etc.
 ]
 ```
 
-This can then be used to obtain the audio data. An example using the [`Blob`](https://developer.mozilla.org/en-US/docs/Web/API/Blob) object is shown below:
+This can then be used for audio playback via a [`Blob`](https://developer.mozilla.org/en-US/docs/Web/API/Blob) object:
 
 ```js
-fileReader.onload = function() {
-    const package = new UTPackage(this.result);
+// Get all sounds in the package
+const sounds = package.getSounds();
 
-    // All embedded sounds
-    const sounds = package.getSounds();
+// Slice the audio data from the DataView's array buffer
+const audioData = reader.dataView.buffer.slice(sound[0].audio_offset, sound[0].audio_offset + sound[0].size);
 
-    // Loop through each sound and create an <audio> element with a Blob src attribute
-    for (const sound of sounds) {
-        // ArrayBuffer containing the audio data
-        const audioData = this.result.slice(sound.audio_offset, sound.audio_offset + sound.audio_size);
+// Create the Blob
+const audioBlob = new Blob([audioData], {
+    type: `audio/${sound[0].format.toLowerCase()}`
+})
 
-        // Blob object using the above data
-        const audioBlob = new Blob([audioData], {
-            type: `audio/${sound.format.toLowerCase()}`
-        })
+// Create an <audio> element
+const audio = new Audio();
 
-        // <audio> element
-        const audioElement = new Audio();
+audio.src      = URL.createObjectURL(audioBlob);
+audio.controls = true;
 
-        // Set Blob src and add controls so the element is visible
-        audioElement.src = URL.createObjectURL(audioBlob);
-        audioElement.controls = true;
+// Append to the DOM
+document.getElementById("sound-container").append(audio);
+```
 
-        // Append to container
-        document.getElementById("sounds-container").append(audioElement);
-    }
+---
+
+### `getTextBuffer(textBufferObject : Object)` returns *Object*
+Returns an object of text buffer properties. The `contents` property is only present if the size is greater than zero.
+
+A text buffer is usually an embedded UnrealScript file.
+
+**Example using BT-BehindSunrise**
+```js
+[
+    // "contents" property truncated for brevity
+    {
+        "object_name" : "resetcounter",
+        "properties"  : [],
+        "pos"         : 850,
+        "top"         : 0,
+        "size"        : 2282,
+        "contents"    : "class ResetCounter expands Triggers;\r\n#exec Texture Import File=Textures\\Counter.pcx"
+    },
+
+    // etc.
+]
+
+```
+
+Displaying the contents of embedded UnrealScript:
+```js
+// Get all text buffers
+const textBuffers = package.getTextBufferObjects();
+
+// Get properties for this text buffer
+const textBuffer = package.getTextBuffer(textBuffers[0]);
+
+// Name and file size
+console.log(textBuffer.name, "text buffer is", textBuffer.size, "bytes");
+
+// Write the script contents to an element
+document.getElementById("code-container").textContent = textBuffer.contents;
+```
+
+---
+
+### `getMusic(musicObject : Object)` returns *Object*
+Returns a music object's properties with an ArrayBuffer of the audio data. This can be used for audio playback using tracker players such as [WebXmp](https://github.com/wothke/libxmp-4.4.1/).
+
+**Example using Botmca9.umx**
+```js
+{
+    "object_name"     : "Botmca9",
+    "properties"      : [],
+    "format"          : "it",
+    "data_end_offset" : 1208272,
+    "size"            : 1208110,
+    "audio_data"      : ArrayBuffer
 }
 ```
 
 ---
 
-#### getTextBufferObjects
+### `getAllBrushData()` returns *Array*
+Returns an array of objects containing related Brush, Model, and Polys objects. The amount of properties is very large, so to view the full list refer to the source code.
+
+**Example using DM-Pyramid**
 ```js
-getTextBufferObjects() : array
+// All brushes in this package
+const allBrushData = package.getAllBrushData();
+
+const brush = allBrushData[0];
+
+// View details for the first brush polygon
+console.log(brush.polys.polygons[0]);
 ```
-Returns an array of text buffer objects. A text buffer is usually an embedded UnrealScript file.
 
-**Example output for BT-BehindSunrise**
+The above will output:
+
 ```js
-[
-    {
-        "class_index": -152,
-        "super_index": 0,
-        "package_index": 0,
-        "object_name_index": 98,
-        "object_flags": 3407872,
-        "serial_size": 2293,
-        "serial_offset": 13374731
+{
+    "vertex_count": 3,
+    "origin": {
+        "x": 696.5000610351562,
+        "y": 34.82449722290039,
+        "z": 390.832763671875
     },
-
-    // etc.
-]
+    "normal": {
+        "x": -0.4247591495513916,
+        "y": 0.17332696914672852,
+        "z": 0.8885591626167297
+    },
+    "texture_u": {
+        "x": 1.5418169498443604,
+        "y": 4.74781608581543,
+        "z": -0.18909700214862823
+    },
+    "texture_v": {
+        "x": 3.814587116241455,
+        "y": -1.0555590391159058,
+        "z": 2.02939510345459
+    },
+    "vertices": [
+        {
+            "x": -37.44523239135742,
+            "y": 24.32044219970703,
+            "z": 42.03284454345703
+        },
+        {
+            "x": -41.419986724853516,
+            "y": 18.003799438476562,
+            "z": 41.36494445800781
+        },
+        {
+            "x": -27.743032455444336,
+            "y": 20.313186645507812,
+            "z": 47.452476501464844
+        }
+    ],
+    "flags": [
+        "Semisolid",
+        "LowShadowDetail"
+    ],
+    "actor"      : 0,
+    "texture"    : -7, // Package object reference
+    "item_name"  : 0,
+    "link"       : 0,
+    "brush_poly" : -1, // Package object reference
+    "pan_u"      : 0,
+    "pan_v"      : 0
+}
 ```
 
 ---
 
-#### getTextBufferData
-```js
-getTextBufferData(object textBufferObject) : object
-```
-Returns an object containing information about the given text buffer object.
+### `getAllMeshData()` returns *Array*
+Returns an array of objects for Mesh, LodMesh, and SkeletalMesh objects. As with brushes, the objects can be extremely large in size so the example below has been reduced for simplicity:
 
-**Example output for BT-BehindSunrise**
 ```js
-// Script contents truncated for brevity
+// All meshes in this package
+const allMeshData = package.getAllMeshData();
+
+const mesh = allMeshData[0];
+
+// View some mesh details
+console.log(mesh.object_name);
+console.log(mesh.rotation_origin);
+console.log(mesh.anim_sequences[1]);
+console.log(mesh.vertices[0]);
+```
+
+The above will output:
+
+```js
+// mesh.object_name
+"sktrooper"
+
+// mesh.rotation_origin
 {
-    "contents": "// ResetCounter.\r\n// A counter that can be used several times\r\n// by Wolf (www.unrealed.de)\r\n",
-    "name": "resetcounter",
-    "pos": 850,
-    "size": 2282,
-    "top": 0
+    "pitch" : 0,
+    "yaw"   : 16384,
+    "roll"  : -16384
+}
+
+// mesh.anim_sequences[1]
+{
+    "name"        : "claw",
+    "group"       : "Attack",
+    "start_frame" : 0,
+    "frame_count" : 13,
+    "functions"   : [
+        {
+            "time"     : 1047904911,
+            "function" : 300
+        },
+        {
+            "time"     : 1061326684,
+            "function" : 300
+        }
+    ],
+    "rate" : 15
+}
+
+// mesh.vertices[0]
+{
+    "x" : -48.125,
+    "y" : -2.375,
+    "z" : -17.75
 }
 ```
