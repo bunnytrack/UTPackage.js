@@ -1,11 +1,5 @@
-<!--
-    TODO:
-      * include gif(s)
-      * update .js for iLeaf on github AND bt.net
--->
-
 # UTPackage.js
----
+
 A JavaScript plugin for reading [Unreal Tournament](https://en.wikipedia.org/wiki/Unreal_Tournament) package data. This has been successfully tested with a few other Unreal Engine 1 games including Deus Ex, Rune, Harry Potter and the Philosopher's Stone/Chamber of Secrets, Clive Barker's Undying, Nerf Arena Blast, and The Wheel of Time.
 
 This plugin is largely based on the following package-readers:
