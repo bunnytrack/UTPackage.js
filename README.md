@@ -12,9 +12,9 @@ The main difference between UTPackage.js and the above readers (besides the prog
 ## Demo
 Visit https://bunnytrack.net/package-explorer/ and drag a UT package (map, texture, sound, etc.) to see what the plugin is capable of:
 
-![Squid model shown using three.js](https://im7.ezgif.com/tmp/ezgif-7-b4fe91316e02.gif)
-![DM-Pyramid wireframe shown using three.js](https://im7.ezgif.com/tmp/ezgif-7-6cdff2e2ef15.gif)
-![Pulse Gun wireframe shown using three.js](https://im7.ezgif.com/tmp/ezgif-7-ca8e478793d5.gif)
+![Squid model shown using three.js](https://www.bunnytrack.net/package-explorer/demo/squid.gif)
+![DM-Pyramid wireframe shown using three.js](https://www.bunnytrack.net/package-explorer/demo/dm-pyramid.gif)
+![Pulse Gun wireframe shown using three.js](https://www.bunnytrack.net/package-explorer/demo/pulse-gun.gif)
 
 ---
 
