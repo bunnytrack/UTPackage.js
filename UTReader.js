@@ -85,9 +85,9 @@ window.UTReader = function(arrayBuffer) {
 		return value;
 	}
 
-	this.getCompactIndex = function() {
+	this.getCompactIndex = function(startValue) {
 		let length = 5;
-		let value  = reader.dataView.getUint8(reader.offset);
+		let value  = startValue || reader.dataView.getUint8(reader.offset);
 
 		if ((value & 0x40) === 0) {
 			length = 1;
@@ -149,8 +149,35 @@ window.UTReader = function(arrayBuffer) {
 		return reader.decodeText(bytes);
 	}
 
-	this.decodeText = function(bytes) {
-		return new TextDecoder("windows-1252").decode(bytes);
+	this.getStringProperty = function() {
+		const firstByte = reader.getUint8();
+		const isUtf16   = firstByte >= 0x82;
+
+		reader.offset--;
+
+		let strSize, charWidth;
+
+		if (!isUtf16) {
+			charWidth = 1;
+			strSize   = reader.getCompactIndex();
+		} else {
+			charWidth = 2;
+			strSize   = reader.getCompactIndex(firstByte - 0x81) * charWidth + charWidth;
+		}
+
+		bytes = reader.dataView.buffer.slice(reader.offset, reader.offset + strSize - charWidth);
+
+		reader.offset += strSize;
+
+		if (isUtf16) {
+			return reader.decodeText(bytes, "utf-16le");
+		}
+
+		return reader.decodeText(bytes);
+	}
+
+	this.decodeText = function(bytes, encoding) {
+		return new TextDecoder(encoding || "windows-1252").decode(bytes);
 	}
 
 	/**
@@ -160,7 +187,7 @@ window.UTReader = function(arrayBuffer) {
 		constructor(object) {
 			reader.seek(object.serial_offset);
 
-			this.object_name = reader.nameTable[object.object_name_index];
+			this.object_name = reader.nameTable[object.object_name_index].name;
 			this.properties  = reader.getObjectProperties(object);
 		}
 	}
@@ -395,8 +422,8 @@ window.UTReader = function(arrayBuffer) {
 
 	class MeshAnimationSequence {
 		constructor() {
-			this.name        = reader.nameTable[reader.getCompactIndex()];
-			this.group       = reader.nameTable[reader.getCompactIndex()];
+			this.name        = reader.nameTable[reader.getCompactIndex()].name;
+			this.group       = reader.nameTable[reader.getCompactIndex()].name;
 			this.start_frame = reader.getUint32();
 			this.frame_count = reader.getUint32();
 
@@ -457,7 +484,7 @@ window.UTReader = function(arrayBuffer) {
 
 	class SkeletalMeshSkeleton {
 		constructor() {
-			this.name           = reader.nameTable[reader.getCompactIndex()];
+			this.name           = reader.nameTable[reader.getCompactIndex()].name;
 			this.flags          = reader.getUint32();
 			this.orientation    = new Quaternion();
 			this.position       = new Vector();
@@ -497,7 +524,7 @@ window.UTReader = function(arrayBuffer) {
 
 	class BoneReference {
 		constructor() {
-			this.name         = reader.nameTable[reader.getCompactIndex()];
+			this.name         = reader.nameTable[reader.getCompactIndex()].name;
 			this.flags        = reader.getUint32();
 			this.parent_index = reader.getUint32();
 		}
@@ -1081,7 +1108,7 @@ window.UTReader = function(arrayBuffer) {
 
 			// If the package itself only contains music (.umx) then the first name table entry is the format.
 			// This is not always the case if the music is embedded in a map, for example.
-			this.format          = reader.nameTable[reader.getCompactIndex()];
+			this.format          = reader.nameTable[reader.getCompactIndex()].name;
 			this.data_end_offset = reader.getUint32();
 			this.size            = reader.getCompactIndex(); // includes null padding?
 			this.audio_data      = reader.dataView.buffer.slice(reader.offset, reader.offset + this.size);
@@ -1092,7 +1119,7 @@ window.UTReader = function(arrayBuffer) {
 		constructor(soundObject) {
 			super(soundObject);
 
-			this.format = reader.nameTable[reader.getCompactIndex()];
+			this.format = reader.nameTable[reader.getCompactIndex()].name;
 
 			if (reader.header.version >= 63) {
 				this.next_object_offset = reader.getUint32();
@@ -1162,6 +1189,39 @@ window.UTReader = function(arrayBuffer) {
 		"Map",
 		"Fixed Array",
 	];
+
+	this.objectFlags = {
+		RF_Transactional   : 0x00000001,
+		RF_Unreachable     : 0x00000002,
+		RF_Public          : 0x00000004,
+		RF_TagImp          : 0x00000008,
+		RF_TagExp          : 0x00000010,
+		RF_SourceModified  : 0x00000020,
+		RF_TagGarbage      : 0x00000040,
+		RF_NeedLoad        : 0x00000200,
+		RF_HighlightedName : 0x00000400,
+		RF_InSingularFunc  : 0x00000800,
+		RF_Suppress        : 0x00001000,
+		RF_InEndState      : 0x00002000,
+		RF_Transient       : 0x00004000,
+		RF_PreLoading      : 0x00008000,
+		RF_LoadForClient   : 0x00010000,
+		RF_LoadForServer   : 0x00020000,
+		RF_LoadForEdit     : 0x00040000,
+		RF_Standalone      : 0x00080000,
+		RF_NotForClient    : 0x00100000,
+		RF_NotForServer    : 0x00200000,
+		RF_NotForEdit      : 0x00400000,
+		RF_Destroyed       : 0x00800000,
+		RF_NeedPostLoad    : 0x01000000,
+		RF_HasStack        : 0x02000000,
+		RF_Native          : 0x04000000,
+		RF_Marked          : 0x08000000,
+		RF_ErrorShutdown   : 0x10000000,
+		RF_DebugPostLoad   : 0x20000000,
+		RF_DebugSerialize  : 0x40000000,
+		RF_DebugDestroy    : 0x80000000,
+	}
 
 	this.fileTypes = {
 		u    : "System",
@@ -1632,17 +1692,23 @@ window.UTReader = function(arrayBuffer) {
 					char = reader.getUint8();
 				}
 
-				const name = reader.decodeText(new Uint8Array(bytes));
+				const name  = reader.decodeText(new Uint8Array(bytes));
+				const flags = reader.getUint32();
 
-				nameTable.push(name);
-
-				reader.offset += propSize;
+				nameTable.push({
+					name  : name,
+					flags : flags,
+				})
 			}
 		} else {
 			for (let i = 0; i < reader.header.name_count; i++) {
-				const name = reader.getSizedText(propSize);
+				const name  = reader.getSizedText();
+				const flags = reader.getUint32();
 
-				nameTable.push(name);
+				nameTable.push({
+					name  : name,
+					flags : flags,
+				})
 			}
 		}
 
@@ -1685,7 +1751,7 @@ window.UTReader = function(arrayBuffer) {
 		}
 
 		// The first byte of property block is a name table index
-		let currentPropName = reader.nameTable[reader.getCompactIndex()];
+		let currentPropName = reader.nameTable[reader.getCompactIndex()].name;
 
 		while (currentPropName.toLowerCase() !== "none") {
 			const prop = {};
@@ -1698,7 +1764,7 @@ window.UTReader = function(arrayBuffer) {
 
 			// If the property type is a struct then the struct name follows
 			if (prop.type === "Struct") {
-				prop.subtype = reader.nameTable[reader.getCompactIndex()];
+				prop.subtype = reader.nameTable[reader.getCompactIndex()].name;
 			}
 
 			/**
@@ -1757,9 +1823,9 @@ window.UTReader = function(arrayBuffer) {
 				}
 
 				if (prevProp && prevProp.index !== undefined) {
-					if (prevProp.index >= 16383) {
+					if (prevProp.index >= 0x3FFF) {
 						arrayIndex = reader.getUint32() & 0x3FFFFFFF;
-					} else if (prevProp.index >= 127) {
+					} else if (prevProp.index >= 0x7F) {
 						arrayIndex = reader.getUint16() & 0x7FFF;
 					} else {
 						arrayIndex = reader.getUint8();
@@ -1795,7 +1861,7 @@ window.UTReader = function(arrayBuffer) {
 				break;
 
 				case "Name":
-					prop.value = reader.nameTable[reader.getCompactIndex()];
+					prop.value = reader.nameTable[reader.getCompactIndex()].name;
 				break;
 
 				// Handled later
@@ -1831,7 +1897,7 @@ window.UTReader = function(arrayBuffer) {
 				break;
 
 				case "Str":
-					prop.value = reader.getCompactIndexSizedText();
+					prop.value = reader.getStringProperty();
 				break;
 
 				// Unknown
@@ -1848,10 +1914,22 @@ window.UTReader = function(arrayBuffer) {
 
 			properties.push(prop);
 
-			currentPropName = reader.nameTable[reader.getCompactIndex()];
+			currentPropName = reader.nameTable[reader.getCompactIndex()].name;
 		}
 
 		return properties;
+	}
+
+	this.getObjectFlagLabels = function(flag) {
+		const flagLabels = [];
+
+		for (const label in reader.objectFlags) {
+			if (reader.objectFlags[label] & flag) {
+				flagLabels.push(label);
+			}
+		}
+
+		return flagLabels;
 	}
 
 	this.getObject = function(index) {
@@ -1874,7 +1952,7 @@ window.UTReader = function(arrayBuffer) {
 
 	this.getObjectByName = function(objectName) {
 		for (const object of reader.exportTable) {
-			if (reader.nameTable[object.object_name_index] === objectName) {
+			if (reader.nameTable[object.object_name_index].name === objectName) {
 				return object;
 			}
 		}
@@ -1884,7 +1962,7 @@ window.UTReader = function(arrayBuffer) {
 
 	this.getObjectNameFromIndex = function(index) {
 		try {
-			return reader.nameTable[reader.getObject(index).object.object_name_index];
+			return reader.nameTable[reader.getObject(index).object.object_name_index].name;
 		} catch (e) {
 			return "None";
 		}
@@ -1915,7 +1993,7 @@ window.UTReader = function(arrayBuffer) {
 		for (const exportObject of reader.exportTable) {
 			const classObject = reader.getObject(exportObject.class_index);
 
-			if (classObject !== null && objectType === reader.nameTable[classObject.object.object_name_index]) {
+			if (classObject !== null && objectType === reader.nameTable[classObject.object.object_name_index].name) {
 				objects.push(exportObject);
 			}
 		}
@@ -2066,8 +2144,8 @@ window.UTReader = function(arrayBuffer) {
 		const objectInfo = reader.getObject(textureObject.package_index);
 
 		return {
-			name  : reader.nameTable[textureObject.object_name_index],
-			group : objectInfo ? reader.nameTable[objectInfo.object.object_name_index] : null,
+			name  : reader.nameTable[textureObject.object_name_index].name,
+			group : objectInfo ? reader.nameTable[objectInfo.object.object_name_index].name : null,
 		}
 	}
 
@@ -2103,7 +2181,7 @@ window.UTReader = function(arrayBuffer) {
 
 	this.getParentPackageName = function(object) {
 		const parentPackage = reader.getObject(object.package_index).object;
-		return reader.nameTable[parentPackage.object_name_index];
+		return reader.nameTable[parentPackage.object_name_index].name;
 	}
 
 	this.getMusic = function(musicObject) {
@@ -2218,10 +2296,6 @@ window.UTReader = function(arrayBuffer) {
 
 	this.getSkeletalMeshData = function(skeletalMeshObject) {
 		return new USkeletalMesh(skeletalMeshObject);
-	}
-
-	this.getSkelModel = function(skelModelObject) {
-		return new USkelModel(skelModelObject);
 	}
 
 	this.getPalette = function(paletteObject) {
@@ -2402,7 +2476,7 @@ window.UTReader = function(arrayBuffer) {
 			for (const prop of properties) {
 				if (allProperties || meaningfulProperties.includes(prop.name)) {
 					if (tableLookup.includes(prop.name)) {
-						levelSummary[prop.name] = reader.nameTable[reader.getObject(prop.value).object.object_name_index];
+						levelSummary[prop.name] = reader.nameTable[reader.getObject(prop.value).object.object_name_index].name;
 					} else {
 						levelSummary[prop.name] = prop.value;
 					}
@@ -2422,9 +2496,9 @@ window.UTReader = function(arrayBuffer) {
 		const levelMusic = reader.getLevelSummary()["Song"];
 
 		for (const entry of reader.importTable) {
-			if (reader.nameTable[entry.class_name_index] === "Package" && entry.package_index === 0) {
+			if (reader.nameTable[entry.class_name_index].name === "Package" && entry.package_index === 0) {
 				const dependency = {
-					name: reader.nameTable[entry.object_name_index]
+					name: reader.nameTable[entry.object_name_index].name
 				}
 
 				const fileExt   = reader.defaultPackages[dependency.name.toLowerCase()];
@@ -2487,64 +2561,5 @@ window.UTReader = function(arrayBuffer) {
 		}
 
 		return counts;
-	}
-
-	/**
-	 * UMOD file functions - incomplete
-	 */
-	this.readUMOD = function() {
-		reader.header     = reader.getUMODHeader();
-		reader.umod_files = reader.getUMODFiles();
-
-		const filenames = reader.umod_files.map(f => f.name);
-	}
-
-	this.getUMODHeader = function() {
-		const header = {};
-
-		// Header is 20 bytes, at the end of the file
-		reader.seek(reader.dataView.byteLength - 20);
-
-		header.signature = reader.getUint32();
-
-		if (header.signature !== SIGNATURE_UMOD) {
-			throw `Invalid UMOD signature: 0x${header.signature.toString(16).padStart(8, 0)}`;
-		}
-
-		header.directory_start = reader.getUint32();
-		header.umod_size       = reader.getUint32();
-		header.version         = reader.getUint32();
-		header.crc             = reader.getUint32();
-
-		return header;
-	}
-
-	this.getUMODFiles = function() {
-		reader.seek(reader.header.directory_start);
-
-		const files = new Array(reader.getCompactIndex());
-
-		for (let i = 0; i < files.length; i++) {
-			files[i] = new UMODFile();
-		}
-
-		return files;
-	}
-
-	/**
-	 * UZ file functions - incomplete
-	 */
-	this.readUZ = function() {
-		const uz = {};
-
-		uz.signature = reader.getUint32();
-
-		if (!SIGNATURE_UZ.includes(uz.signature)) {
-			throw `Invalid UZ signature: ${uz.signature}`;
-		}
-
-		uz.filename = reader.getSizedText();
-
-		const total = reader.getUint32();
 	}
 }
