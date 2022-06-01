@@ -149,25 +149,21 @@ window.UTReader = function(arrayBuffer) {
 		return reader.decodeText(bytes);
 	}
 
+	/**
+	 * From Anthrax (maintainer of OldUnreal UT99 patch):
+	 *   There are two legal encodings for string properties: "plain ANSI" or UTF-16LE.
+	 *   If the string you want to store in the property has no characters outside the [0, 0x7F] range,
+	 *   it will be stored as plain ANSI. The way to tell them apart is to look at the length that is stored
+	 *   at the start of the string: positive length = ANSI, negative = UTF-16LE.
+	 */
 	this.getStringProperty = function() {
-		const firstByte = reader.getUint8();
-		const isUtf16   = firstByte >= 0x82;
+		const strSize    = reader.getCompactIndex();
+		const isUtf16    = strSize < 0;
+		const charWidth  = isUtf16 ? 2 : 1;
+		const byteLength = Math.abs(strSize) * charWidth;
+		const bytes      = reader.dataView.buffer.slice(reader.offset, reader.offset + byteLength - charWidth);
 
-		reader.offset--;
-
-		let strSize, charWidth;
-
-		if (!isUtf16) {
-			charWidth = 1;
-			strSize   = reader.getCompactIndex();
-		} else {
-			charWidth = 2;
-			strSize   = reader.getCompactIndex(firstByte - 0x81) * charWidth + charWidth;
-		}
-
-		bytes = reader.dataView.buffer.slice(reader.offset, reader.offset + strSize - charWidth);
-
-		reader.offset += strSize;
+		reader.offset += byteLength;
 
 		if (isUtf16) {
 			return reader.decodeText(bytes, "utf-16le");
