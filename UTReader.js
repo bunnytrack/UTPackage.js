@@ -165,8 +165,7 @@ window.UTReader = function(arrayBuffer) {
 		}
 
 		get packageObject() {
-			const objectPackage = reader.getObject(this.package_index);
-			return objectPackage?.object || objectPackage;
+			return reader.getObject(this.package_index);
 		}
 
 		get packageName() {
@@ -200,13 +199,11 @@ window.UTReader = function(arrayBuffer) {
 		}
 
 		get classObject() {
-			const classObject = reader.getObject(this.class_index);
-			return classObject?.object || classObject;
+			return reader.getObject(this.class_index);
 		}
 
 		get parentObject() {
-			const parentObject = reader.getObject(this.super_index);
-			return parentObject?.object || parentObject;
+			return reader.getObject(this.super_index);
 		}
 
 		get className() {
@@ -1961,18 +1958,10 @@ window.UTReader = function(arrayBuffer) {
 	this.getObject = function(index) {
 		if (index === 0) {
 			return null;
-		}
-
-		if (index < 0) {
-			return {
-				table  : "import",
-				object : reader.importTable[~index],
-			}
-		}
-
-		return {
-			table  : "export",
-			object : reader.exportTable[index - 1],
+		} else if (index < 0) {
+			return reader.importTable[~index];
+		} else {
+			return reader.exportTable[index - 1];
 		}
 	}
 
@@ -1988,7 +1977,7 @@ window.UTReader = function(arrayBuffer) {
 
 	this.getObjectNameFromIndex = function(index) {
 		try {
-			return reader.nameTable[reader.getObject(index).object.object_name_index].name;
+			return reader.nameTable[reader.getObject(index).object_name_index].name;
 		} catch (e) {
 			return "None";
 		}
@@ -2007,7 +1996,7 @@ window.UTReader = function(arrayBuffer) {
 	this.getParentObject = function(object) {
 		if (object.package_index !== 0) {
 			const parent = reader.getObject(object.package_index);
-			return reader.getParentObject(parent.object);
+			return reader.getParentObject(parent);
 		}
 
 		return object;
@@ -2019,7 +2008,7 @@ window.UTReader = function(arrayBuffer) {
 		for (const exportObject of reader.exportTable) {
 			const classObject = reader.getObject(exportObject.class_index);
 
-			if (classObject !== null && objectType === reader.nameTable[classObject.object.object_name_index].name) {
+			if (classObject !== null && objectType === reader.nameTable[classObject.object_name_index].name) {
 				objects.push(exportObject);
 			}
 		}
@@ -2094,17 +2083,17 @@ window.UTReader = function(arrayBuffer) {
 
 		if (modelIndex) {
 			const modelObject = reader.getObject(modelIndex.value);
-			const modelData   = reader.getUModel(modelObject.object);
+			const modelData   = reader.getUModel(modelObject);
 
-			data.model.object = modelObject.object;
+			data.model.object = modelObject;
 			data.model.properties = modelData;
 
 			// Polys
 			if (modelData.polys !== 0) {
 				const polyObject = reader.getObject(modelData.polys);
-				const polysData  = reader.getUPolys(polyObject.object);
+				const polysData  = reader.getUPolys(polyObject);
 
-				data.polys.object   = polyObject.object;
+				data.polys.object   = polyObject;
 				data.polys.polygons = polysData.polys;
 			}
 		}
@@ -2171,7 +2160,7 @@ window.UTReader = function(arrayBuffer) {
 
 		return {
 			name  : reader.nameTable[textureObject.object_name_index].name,
-			group : objectInfo ? reader.nameTable[objectInfo.object.object_name_index].name : null,
+			group : objectInfo ? reader.nameTable[objectInfo.object_name_index].name : null,
 		}
 	}
 
@@ -2206,7 +2195,7 @@ window.UTReader = function(arrayBuffer) {
 	}
 
 	this.getParentPackageName = function(object) {
-		const parentPackage = reader.getObject(object.package_index).object;
+		const parentPackage = reader.getObject(object.package_index);
 		return reader.nameTable[parentPackage.object_name_index].name;
 	}
 
@@ -2333,7 +2322,7 @@ window.UTReader = function(arrayBuffer) {
 
 		for (const prop of textureProperties) {
 			if (prop.name.toLowerCase() === "palette") {
-				return reader.getObject(prop.value).object;
+				return reader.getObject(prop.value);
 			}
 		}
 
@@ -2468,7 +2457,7 @@ window.UTReader = function(arrayBuffer) {
 
 						// Final check - can't show screenshot if it's linked to an external package.
 						if (invalidScreenshot.table !== "import") {
-							reader.textureToCanvas(invalidScreenshot.object, function(screenshot) {
+							reader.textureToCanvas(invalidScreenshot, function(screenshot) {
 								callback([screenshot]); // return as array for consistency
 							})
 
@@ -2502,7 +2491,7 @@ window.UTReader = function(arrayBuffer) {
 			for (const prop of properties) {
 				if (allProperties || meaningfulProperties.includes(prop.name)) {
 					if (tableLookup.includes(prop.name)) {
-						levelSummary[prop.name] = reader.nameTable[reader.getObject(prop.value).object.object_name_index].name;
+						levelSummary[prop.name] = reader.nameTable[reader.getObject(prop.value).object_name_index].name;
 					} else {
 						levelSummary[prop.name] = prop.value;
 					}
