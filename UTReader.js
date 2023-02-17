@@ -129,26 +129,6 @@ window.UTReader = function(arrayBuffer) {
 		return reader.decodeText(bytes);
 	}
 
-	this.getCompactIndexSizedText = function() {
-		const size  = reader.getCompactIndex();
-		const bytes = reader.dataView.buffer.slice(reader.offset, reader.offset + size - 1);
-
-		reader.offset += size;
-
-		return reader.decodeText(bytes);
-	}
-
-	// Gets text where no size byte is present; size is specified by function parameter instead
-	this.getUnsizedText = function(offset, size) {
-		reader.seek(offset);
-
-		const bytes = reader.dataView.buffer.slice(reader.offset, reader.offset + size);
-
-		reader.offset += size;
-
-		return reader.decodeText(bytes);
-	}
-
 	/**
 	 * From Anthrax (maintainer of OldUnreal UT99 patch):
 	 *   There are two legal encodings for string properties: "plain ANSI" or UTF-16LE.
@@ -1737,7 +1717,6 @@ window.UTReader = function(arrayBuffer) {
 
 	this.getNameTable = function() {
 		const nameTable = [];
-		const propSize  = 4;
 
 		reader.seek(reader.header.name_offset);
 
@@ -1977,18 +1956,6 @@ window.UTReader = function(arrayBuffer) {
 		}
 
 		return properties;
-	}
-
-	this.getObjectFlagLabels = function(flag) {
-		const flagLabels = [];
-
-		for (const label in reader.objectFlags) {
-			if (reader.objectFlags[label] & flag) {
-				flagLabels.push(label);
-			}
-		}
-
-		return flagLabels;
 	}
 
 	this.getObject = function(index) {
