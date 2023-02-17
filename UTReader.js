@@ -177,22 +177,36 @@ window.UTReader = function(arrayBuffer) {
 	}
 
 	/**
-	 * Generic class for reading package objects
+	 * Package table objects
 	 */
-	class UTObject {
-		constructor(object) {
-			reader.seek(object.serial_offset);
+	class TableObject {
+		get name() {
+			return reader.nameTable[this.object_name_index].name;
+		}
 
-			this.object_name = reader.nameTable[object.object_name_index].name;
-			this.properties  = reader.getObjectProperties(object);
+		get packageObject() {
+			const objectPackage = reader.getObject(this.package_index);
+			return objectPackage?.object || objectPackage;
+		}
+
+		get packageName() {
+			return this.packageObject?.name || null;
+		}
+
+		get table() {
+			const { name } = this.constructor;
+
+			if (name.startsWith("ExportTable")) {
+				return "export";
+			} else if (name.startsWith("ImportTable")) {
+				return "import";
+			}
 		}
 	}
 
-	/**
-	 * Package table objects
-	 */
-	class ExportTableObject {
+	class ExportTableObject extends TableObject {
 		constructor() {
+			super();
 			this.class_index       = reader.getCompactIndex();
 			this.super_index       = reader.getCompactIndex();
 			this.package_index     = reader.getInt32();
@@ -204,14 +218,63 @@ window.UTReader = function(arrayBuffer) {
 				this.serial_offset = reader.getCompactIndex();
 			}
 		}
+
+		get classObject() {
+			const classObject = reader.getObject(this.class_index);
+			return classObject?.object || classObject;
+		}
+
+		get parentObject() {
+			const parentObject = reader.getObject(this.super_index);
+			return parentObject?.object || parentObject;
+		}
+
+		get className() {
+			return this.classObject?.name || null;
+		}
+
+		get parentObjectName() {
+			return this.parentObject?.name || null;
+		}
+
+		get flagNames() {
+			return Object.keys(reader.objectFlags).filter(name => {
+				return reader.objectFlags[name] & this.object_flags;
+			})
+		}
+
+		hasFlag(flag) {
+			return Boolean(this.object_flags & flag);
+		}
 	}
 
-	class ImportTableObject {
+	class ImportTableObject extends TableObject {
 		constructor() {
+			super();
 			this.class_package_index = reader.getCompactIndex();
 			this.class_name_index    = reader.getCompactIndex();
 			this.package_index       = reader.getInt32();
 			this.object_name_index   = reader.getCompactIndex();
+		}
+
+		get classPackageName() {
+			return reader.nameTable[this.class_package_index].name;
+		}
+
+		get className() {
+			return reader.nameTable[this.class_name_index].name;
+		}
+	}
+
+	/**
+	 * Generic class for reading package objects
+	 */
+	class UTObject {
+		constructor(object) {
+			reader.seek(object.serial_offset);
+
+			this.object_name = object.name;
+			this.properties  = reader.getObjectProperties(object);
 		}
 	}
 
