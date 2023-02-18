@@ -2135,22 +2135,20 @@ window.UTReader = function(arrayBuffer) {
 		}
 	}
 
-	this.getTexturesGrouped = function() {
-		const textures  = reader.getTextureObjects();
+	this.getTextureGroups = function() {
 		const grouped   = {};
 		const ungrouped = [];
 
 		let total = 0;
 
-		for (const textureObject of textures) {
-			const textureInfo = reader.getTextureInfo(textureObject);
+		for (const texture of reader.getTextureObjects()) {
+			const textureInfo = reader.getTextureInfo(texture);
 
 			if (textureInfo.group) {
-				if (typeof grouped[textureInfo.group] === "array") {
-					grouped[textureInfo.group].push(textureInfo.name);
-				} else {
-					grouped[textureInfo.group] = [textureInfo.name];
+				if (grouped[textureInfo.group] === undefined) {
+					grouped[textureInfo.group] = [];
 				}
+				grouped[textureInfo.group].push(textureInfo.name);
 			} else {
 				ungrouped.push(textureInfo.name);
 			}
