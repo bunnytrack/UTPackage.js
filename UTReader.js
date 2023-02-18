@@ -198,6 +198,12 @@ window.UTReader = function(arrayBuffer) {
 			}
 		}
 
+		// TODO: move getObjectProperties() here
+		get properties() {
+			if (this.serial_offset === undefined) return null;
+			return reader.getObjectProperties(this);
+		}
+
 		get classObject() {
 			return reader.getObject(this.class_index);
 		}
