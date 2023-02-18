@@ -255,9 +255,8 @@ window.UTReader = function(arrayBuffer) {
 	class UTObject {
 		constructor(object) {
 			reader.seek(object.serial_offset);
-
 			this.object_name = object.objectName;
-			this.properties  = reader.getObjectProperties(object);
+			this.properties  = object.properties;
 		}
 	}
 
@@ -2049,7 +2048,7 @@ window.UTReader = function(arrayBuffer) {
 
 		// Brush
 		data.brush.object = brushObject;
-		data.brush.properties = reader.getObjectProperties(brushObject);
+		data.brush.properties = brushObject.properties;
 
 		// Model
 		const modelIndex = data.brush.properties.filter(p => p.name.toLowerCase() === "brush")[0];
@@ -2214,9 +2213,7 @@ window.UTReader = function(arrayBuffer) {
 			l : 25
 		}
 
-		const properties = reader.getObjectProperties(lightObject);
-
-		for (const prop of properties) {
+		for (const prop of lightObject.properties) {
 			switch (prop.name.toLowerCase()) {
 				// Degree in colour wheel
 				case "lighthue":
@@ -2281,9 +2278,7 @@ window.UTReader = function(arrayBuffer) {
 	}
 
 	this.getPaletteObjectFromTexture = function(textureObject) {
-		const textureProperties = reader.getObjectProperties(textureObject);
-
-		for (const prop of textureProperties) {
+		for (const prop of textureObject.properties) {
 			if (prop.name.toLowerCase() === "palette") {
 				return reader.getObject(prop.value);
 			}
@@ -2410,16 +2405,14 @@ window.UTReader = function(arrayBuffer) {
 		else {
 			// Officially, the map screenshot should be named "Screenshot"; however, it's possible to set this value
 			// to a different texture. It won't appear in-game, but is still saved in the LevelSummary actor.
-			const levelInfoObject = reader.getObjectByName("LevelInfo0");
+			const levelInfo = reader.getObjectByName("LevelInfo0");
 
-			if (levelInfoObject) {
-				const levelInfoProps = reader.getObjectProperties(levelInfoObject);
-
-				for (const prop of levelInfoProps) {
+			if (levelInfo) {
+				for (const prop of levelInfo.properties) {
 					if (prop.name === "Screenshot") {
 						const invalidScreenshot = reader.getObject(prop.value);
 
-						// Final check - can't show screenshot if it's linked to an external package.
+						// Final check - can't show screenshot if it's linked to an external package (e.g. CTF-BT-Brazilian-novice).
 						if (invalidScreenshot.table !== "import") {
 							reader.textureToCanvas(invalidScreenshot, function(screenshot) {
 								callback([screenshot]); // return as array for consistency
@@ -2441,21 +2434,19 @@ window.UTReader = function(arrayBuffer) {
 
 	this.getLevelSummary = function(allProperties = false) {
 		const levelSummary    = {};
-		const levelInfoObject = reader.getObjectByName("LevelInfo0");
+		const levelInfo = reader.getObjectByName("LevelInfo0");
 
-		if (levelInfoObject) {
-			const properties = reader.getObjectProperties(levelInfoObject);
-
+		if (levelInfo) {
 			// If allProperties == false, only include these
 			const meaningfulProperties = ["Author", "IdealPlayerCount", "LevelEnterText", "Screenshot", "Song", "Title"];
 
 			// Lookup these properties in the name table
 			const tableLookup = ["Song", "DefaultGameType", "Summary", "NavigationPointList", "Level"];
 
-			for (const prop of properties) {
+			for (const prop of levelInfo.properties) {
 				if (allProperties || meaningfulProperties.includes(prop.name)) {
 					if (tableLookup.includes(prop.name)) {
-						levelSummary[prop.name] = reader.nameTable[reader.getObject(prop.value).object_name_index].name;
+						levelSummary[prop.name] = reader.getObject(prop.value).name;
 					} else {
 						levelSummary[prop.name] = prop.value;
 					}
@@ -2528,14 +2519,16 @@ window.UTReader = function(arrayBuffer) {
 	this.getClassesCount = function() {
 		const counts = {};
 
-		for (const object of reader.exportTable) {
-			const name = reader.getObjectNameFromIndex(object.class_index).toLowerCase();
+		for (const tableEntry of reader.exportTable) {
+			if (!tableEntry.className) continue;
 
-			if (counts[name] !== undefined) {
-				counts[name]++;
-			} else {
-				counts[name] = 1;
+			const className = tableEntry.className.toLowerCase();
+
+			if (counts[className] === undefined) {
+				counts[className] = 0;
 			}
+
+			counts[className]++;
 		}
 
 		return counts;
