@@ -1582,7 +1582,7 @@ window.UTReader = function(arrayBuffer) {
 		"Unlit"            : 0x00400000,
 		"HighShadowDetail" : 0x00800000,
 		"Portal"           : 0x04000000,
-		"Mirrored"         : 0x08000000
+		"Mirrored"         : 0x08000000,
 	}
 
 	this.brushClasses = [
@@ -1751,24 +1751,24 @@ window.UTReader = function(arrayBuffer) {
 	}
 
 	this.getExportTable = function() {
-		const exportTable = [];
+		const exportTable = new Array(reader.header.export_count);
 
 		reader.seek(reader.header.export_offset);
 
-		for (let i = 0; i < reader.header.export_count; i++) {
-			exportTable.push(new ExportTableObject());
+		for (let i = 0; i < exportTable.length; i++) {
+			exportTable[i] = new ExportTableObject();
 		}
 
 		return exportTable;
 	}
 
 	this.getImportTable = function() {
-		const importTable = [];
+		const importTable = new Array(reader.header.import_count);
 
 		reader.seek(reader.header.import_offset);
 
-		for (let i = 0; i < reader.header.import_count; i++) {
-			importTable.push(new ImportTableObject());
+		for (let i = 0; i < importTable.length; i++) {
+			importTable[i] = new ImportTableObject();
 		}
 
 		return importTable;
@@ -1780,7 +1780,7 @@ window.UTReader = function(arrayBuffer) {
 		reader.seek(object.serial_offset);
 
 		// If RF_HasStack flag is present, handle "StateFrame" block which comes before the properties
-		if ((object.object_flags & 0x02000000) === 0x02000000) {
+		if (object.hasFlag(reader.objectFlags.RF_HasStack)) {
 			// Not actually a property but include it anyway for completeness
 			properties.push(new StateFrame());
 		}
@@ -1795,7 +1795,7 @@ window.UTReader = function(arrayBuffer) {
 			const infoByte = reader.getUint8();
 
 			prop.name = currentPropName;
-			prop.type = reader.propertyTypes[infoByte & 0x0F];
+			prop.type = reader.propertyTypes[infoByte & 0xF];
 
 			// If the property type is a struct then the struct name follows
 			if (prop.type === "Struct") {
@@ -2002,69 +2002,36 @@ window.UTReader = function(arrayBuffer) {
 		return object;
 	}
 
-	this.getObjectsByType = function(objectType) {
-		const objects = [];
-
-		for (const exportObject of reader.exportTable) {
-			const classObject = reader.getObject(exportObject.class_index);
-
-			if (classObject !== null && objectType === reader.nameTable[classObject.object_name_index].name) {
-				objects.push(exportObject);
-			}
-		}
-
-		return objects;
+	this.getObjectsByClass = function(objectType) {
+		return reader.exportTable.filter(item => item.className === objectType);
 	}
 
 	this.getTextureObjects = function() {
-		return reader.getObjectsByType("Texture");
+		return reader.getObjectsByClass("Texture");
 	}
 
 	this.getSoundObjects = function() {
-		return reader.getObjectsByType("Sound");
+		return reader.getObjectsByClass("Sound");
 	}
 
 	this.getMusicObjects = function() {
-		return reader.getObjectsByType("Music");
+		return reader.getObjectsByClass("Music");
 	}
 
 	this.getTextBufferObjects = function() {
-		return reader.getObjectsByType("TextBuffer");
+		return reader.getObjectsByClass("TextBuffer");
 	}
 
-	this.getLevel = function() {
-		const levels = [];
-		const levelObjects = reader.getObjectsByType("Level");
-
-		for (const levelObject of levelObjects) {
-			levels.push(new ULevel(levelObject));
-		}
-
-		return levels;
+	this.getLevelObjects = function() {
+		return reader.getObjectsByClass("Level").map(item => new ULevel(item));
 	}
 
 	this.getAllMeshObjects = function() {
-		const meshes = [];
-
-		for (const object of reader.exportTable) {
-			const name = reader.getObjectNameFromIndex(object.class_index);
-
-			if (reader.meshClasses.includes(name)) meshes.push(object);
-		}
-
-		return meshes;
+		return reader.exportTable.filter(item => reader.meshClasses.includes(item.className));
 	}
 
 	this.getAllBrushObjects = function() {
-		const brushes = [];
-
-		for (const object of reader.exportTable) {
-			const name = reader.getObjectNameFromIndex(object.class_index);
-
-			if (reader.brushClasses.includes(name)) brushes.push(object);
-		}
-
-		return brushes;
+		return reader.exportTable.filter(item => reader.brushClasses.includes(item.className));
 	}
 
 	this.getBrushData = function(brushObject) {
@@ -2125,7 +2092,7 @@ window.UTReader = function(arrayBuffer) {
 
 	this.getAnimations = function() {
 		const animations       = [];
-		const animationObjects = reader.getObjectsByType("Animation");
+		const animationObjects = reader.getObjectsByClass("Animation");
 
 		for (const animationObject of animationObjects) {
 			animations.push(new UAnimation(animationObject));
@@ -2138,7 +2105,7 @@ window.UTReader = function(arrayBuffer) {
 		const textBuffer = new UTextBuffer(textBufferObject);
 
 		if (textBufferObject.package_index !== 0) {
-			textBuffer.package = reader.getParentPackageName(textBufferObject);
+			textBuffer.package = textBufferObject.packageName;
 		}
 
 		return textBuffer;
@@ -2146,7 +2113,7 @@ window.UTReader = function(arrayBuffer) {
 
 	this.getFonts = function() {
 		const fonts       = [];
-		const fontObjects = reader.getObjectsByType("Font");
+		const fontObjects = reader.getObjectsByClass("Font");
 
 		for (const fontObject of fontObjects) {
 			fonts.push(new UFont(fontObject));
@@ -2188,13 +2155,8 @@ window.UTReader = function(arrayBuffer) {
 		return {
 			grouped   : grouped,
 			ungrouped : ungrouped,
-			length    : total
+			length    : total,
 		}
-	}
-
-	this.getParentPackageName = function(object) {
-		const parentPackage = reader.getObject(object.package_index);
-		return reader.nameTable[parentPackage.object_name_index].name;
 	}
 
 	this.getMusic = function(musicObject) {
@@ -2216,9 +2178,8 @@ window.UTReader = function(arrayBuffer) {
 		for (const soundObject of soundObjects) {
 			const sound = new USound(soundObject);
 
-			// Attempt to get this sound's package name
 			if (soundObject.package_index !== 0) {
-				sound.package = reader.getParentPackageName(soundObject);
+				sound.package = soundObject.packageName;
 			}
 
 			// Not all sound files are PCM - e.g. ultra trash map CTF-BT-SuckmeToo seems to contain some kind of compressed audio.
@@ -2413,13 +2374,10 @@ window.UTReader = function(arrayBuffer) {
 	}
 
 	this.getScreenshot = function(callback) {
-		// Multiple screenshots can be embedded to create a montage effect by naming MyLevel textures "Screenshot2" etc.
+		// Multiple screenshots can be embedded to create a montage effect by
+		// consecutively naming MyLevel textures "Screenshot1", "Screenshot2", etc.
 		const screenshotRegEx = new RegExp("^Screenshot([0-9]+)?$", "i");
-		const screenshotNames = reader.nameTable.filter(name => screenshotRegEx.test(name));
-		let screenshotObjects = screenshotNames.map(name => reader.getObjectByName(name));
-
-		// "Screenshot" may be present in name table but may erroneously point to an import table object (e.g. CTF-BT-Brazilian-novice)
-		screenshotObjects = screenshotObjects.filter(s => s !== null);
+		const screenshotObjects = reader.exportTable.filter(item => screenshotRegEx.test(item.objectName))
 
 		let screenshotFound = false;
 
@@ -2432,7 +2390,11 @@ window.UTReader = function(arrayBuffer) {
 
 					if (screenshots.length === screenshotObjects.length) {
 						// Sort numerically as name table doesn't guarantee order
-						screenshots.sort((a, b) => Number(a.name.substring("Screenshot".length)) - Number(b.name.substring("Screenshot".length)));
+						screenshots.sort((a, b) => {
+							const numA = Number(a.name.substring("Screenshot".length));
+							const numB = Number(b.name.substring("Screenshot".length));
+							return numA - numB;
+						})
 						callback(screenshots);
 					}
 				})
@@ -2548,7 +2510,6 @@ window.UTReader = function(arrayBuffer) {
 		for (const dep of dependencies) {
 			if (dep.default) {
 				if (ignoreCore && ignore.includes(dep.name.toLowerCase())) continue;
-
 				filtered.packages.default.push(dep);
 			} else {
 				filtered.packages.custom.push(dep);
