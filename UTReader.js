@@ -159,8 +159,8 @@ window.UTReader = function(arrayBuffer) {
 	/**
 	 * Package table objects
 	 */
-	class TableObject {
-		get name() {
+	class UObject {
+		get objectName() {
 			return reader.nameTable[this.object_name_index].name;
 		}
 
@@ -169,7 +169,7 @@ window.UTReader = function(arrayBuffer) {
 		}
 
 		get packageName() {
-			return this.packageObject?.name || null;
+			return this.packageObject?.objectName || null;
 		}
 
 		get table() {
@@ -183,7 +183,7 @@ window.UTReader = function(arrayBuffer) {
 		}
 	}
 
-	class ExportTableObject extends TableObject {
+	class ExportTableObject extends UObject {
 		constructor() {
 			super();
 			this.class_index       = reader.getCompactIndex();
@@ -207,11 +207,11 @@ window.UTReader = function(arrayBuffer) {
 		}
 
 		get className() {
-			return this.classObject?.name || null;
+			return this.classObject?.objectName || null;
 		}
 
 		get parentObjectName() {
-			return this.parentObject?.name || null;
+			return this.parentObject?.objectName || null;
 		}
 
 		get flagNames() {
@@ -225,7 +225,7 @@ window.UTReader = function(arrayBuffer) {
 		}
 	}
 
-	class ImportTableObject extends TableObject {
+	class ImportTableObject extends UObject {
 		constructor() {
 			super();
 			this.class_package_index = reader.getCompactIndex();
@@ -250,7 +250,7 @@ window.UTReader = function(arrayBuffer) {
 		constructor(object) {
 			reader.seek(object.serial_offset);
 
-			this.object_name = object.name;
+			this.object_name = object.objectName;
 			this.properties  = reader.getObjectProperties(object);
 		}
 	}
@@ -1966,9 +1966,9 @@ window.UTReader = function(arrayBuffer) {
 	}
 
 	this.getObjectByName = function(objectName) {
-		for (const object of reader.exportTable) {
-			if (reader.nameTable[object.object_name_index].name === objectName) {
-				return object;
+		for (const tableEntry of reader.exportTable) {
+			if (tableEntry.objectName === objectName) {
+				return tableEntry;
 			}
 		}
 
@@ -2156,11 +2156,9 @@ window.UTReader = function(arrayBuffer) {
 	}
 
 	this.getTextureInfo = function(textureObject) {
-		const objectInfo = reader.getObject(textureObject.package_index);
-
 		return {
-			name  : reader.nameTable[textureObject.object_name_index].name,
-			group : objectInfo ? reader.nameTable[objectInfo.object_name_index].name : null,
+			name: textureObject.objectName,
+			group: textureObject.packageName,
 		}
 	}
 
@@ -2510,14 +2508,14 @@ window.UTReader = function(arrayBuffer) {
 		// Check dependencies against the file's "Song" name (if it's a map).
 		const levelMusic = reader.getLevelSummary()["Song"];
 
-		for (const entry of reader.importTable) {
-			if (reader.nameTable[entry.class_name_index].name === "Package" && entry.package_index === 0) {
+		for (const tableEntry of reader.importTable) {
+			if (tableEntry.className === "Package" && tableEntry.package_index === 0) {
 				const dependency = {
-					name: reader.nameTable[entry.object_name_index].name
+					name: tableEntry.objectName,
 				}
 
 				const fileExt   = reader.defaultPackages[dependency.name.toLowerCase()];
-				const isDefault = !!fileExt;
+				const isDefault = fileExt !== undefined;
 
 				if (isDefault) {
 					dependency.ext  = fileExt;
