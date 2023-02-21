@@ -88,6 +88,7 @@ window.UTReader = function(arrayBuffer) {
 	this.getCompactIndex = function(startValue) {
 		let length = 5;
 		let value  = startValue || reader.dataView.getUint8(reader.offset);
+		const signed = Boolean(value & 0x80);
 
 		if ((value & 0x40) === 0) {
 			length = 1;
@@ -1986,7 +1987,7 @@ window.UTReader = function(arrayBuffer) {
 		}
 	}
 
-	this.getObjectByName = function(objectName) {
+	this.getExportObjectByName = function(objectName) {
 		for (const tableEntry of reader.exportTable) {
 			if (tableEntry.objectName === objectName) {
 				return tableEntry;
@@ -1996,25 +1997,30 @@ window.UTReader = function(arrayBuffer) {
 		return null;
 	}
 
+	this.getImportObjectByName = function(objectName) {
+		for (const tableEntry of reader.importTable) {
+			if (tableEntry.objectName === objectName) {
+				return tableEntry;
+			}
+		}
+
+		return null;
+	}
+
+	this.getExportObjectsByName = function(objectName) {
+		return reader.exportTable.filter(item => item.objectName === objectName);
+	}
+
+	this.getImportObjectsByName = function(objectName) {
+		return reader.importTable.filter(item => item.objectName === objectName);
+	}
+
 	this.getObjectNameFromIndex = function(index) {
-		try {
-			return reader.nameTable[reader.getObject(index).object_name_index].name;
-		} catch (e) {
-			return "None";
-		}
+		return reader.getObject(index)?.objectName || "None";
 	}
 
-	this.getParentObject = function(object) {
-		if (object.package_index !== 0) {
-			const parent = reader.getObject(object.package_index);
-			return reader.getParentObject(parent);
-		}
-
-		return object;
-	}
-
-	this.getObjectsByClass = function(objectType) {
-		return reader.exportTable.filter(item => item.className === objectType);
+	this.getObjectsByClass = function(objectClass) {
+		return reader.exportTable.filter(item => item.className === objectClass);
 	}
 
 	this.getTextureObjects = function() {
@@ -2057,7 +2063,7 @@ window.UTReader = function(arrayBuffer) {
 		data.brush.properties = brushObject.properties;
 
 		// Model
-		const modelIndex = data.brush.properties.filter(p => p.name.toLowerCase() === "brush")[0];
+		const modelIndex = data.brush.properties.find(prop => prop.name.toLowerCase() === "brush");
 
 		if (modelIndex) {
 			const modelObject = reader.getObject(modelIndex.value);
@@ -2411,7 +2417,7 @@ window.UTReader = function(arrayBuffer) {
 		else {
 			// Officially, the map screenshot should be named "Screenshot"; however, it's possible to set this value
 			// to a different texture. It won't appear in-game, but is still saved in the LevelSummary actor.
-			const levelInfo = reader.getObjectByName("LevelInfo0");
+			const levelInfo = reader.getExportObjectByName("LevelInfo0");
 
 			if (levelInfo) {
 				for (const prop of levelInfo.properties) {
@@ -2440,7 +2446,7 @@ window.UTReader = function(arrayBuffer) {
 
 	this.getLevelSummary = function(allProperties = false) {
 		const levelSummary    = {};
-		const levelInfo = reader.getObjectByName("LevelInfo0");
+		const levelInfo = reader.getExportObjectByName("LevelInfo0");
 
 		if (levelInfo) {
 			// If allProperties == false, only include these
@@ -2469,7 +2475,7 @@ window.UTReader = function(arrayBuffer) {
 		const dependencies = [];
 
 		// Check dependencies against the file's "Song" name (if it's a map).
-		const levelMusic = reader.getLevelSummary()["Song"];
+		const { Song: levelMusic } = reader.getLevelSummary();
 
 		for (const tableEntry of reader.importTable) {
 			if (tableEntry.className === "Package" && tableEntry.package_index === 0) {
@@ -2477,14 +2483,17 @@ window.UTReader = function(arrayBuffer) {
 					name: tableEntry.objectName,
 				}
 
-				const fileExt   = reader.defaultPackages[dependency.name.toLowerCase()];
+				const fileExt = reader.defaultPackages[dependency.name.toLowerCase()];
 				const isDefault = fileExt !== undefined;
+				const isLevelMusic = dependency.name === levelMusic;
 
 				if (isDefault) {
-					dependency.ext  = fileExt;
-					dependency.type = reader.fileTypes[dependency.ext];
-				} else if (dependency.name === levelMusic) {
-					dependency.ext  = "umx";
+					dependency.ext = fileExt;
+				} else if (isLevelMusic) {
+					dependency.ext = "umx";
+				}
+
+				if (isDefault || isLevelMusic) {
 					dependency.type = reader.fileTypes[dependency.ext];
 				}
 
