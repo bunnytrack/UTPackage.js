@@ -171,16 +171,6 @@ window.UTReader = function(arrayBuffer) {
 		get packageName() {
 			return this.packageObject?.objectName || null;
 		}
-
-		get table() {
-			const { name } = this.constructor;
-
-			if (name.startsWith("ExportTable")) {
-				return "export";
-			} else if (name.startsWith("ImportTable")) {
-				return "import";
-			}
-		}
 	}
 
 	class ExportTableObject extends UObject {
@@ -403,6 +393,10 @@ window.UTReader = function(arrayBuffer) {
 			})
 		}
 
+		get table() {
+			return "export";
+		}
+
 		hasFlag(flag) {
 			return Boolean(this.object_flags & flag);
 		}
@@ -423,6 +417,10 @@ window.UTReader = function(arrayBuffer) {
 
 		get className() {
 			return reader.nameTable[this.class_name_index].name;
+		}
+
+		get table() {
+			return "import";
 		}
 	}
 
