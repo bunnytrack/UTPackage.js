@@ -198,10 +198,187 @@ window.UTReader = function(arrayBuffer) {
 			}
 		}
 
-		// TODO: move getObjectProperties() here
 		get properties() {
-			if (this.serial_offset === undefined) return null;
-			return reader.getObjectProperties(this);
+			const properties = [];
+
+			if (!this.hasData) return properties;
+
+			reader.seek(this.serial_offset);
+
+			// If RF_HasStack flag is present, handle "StateFrame" block which comes before the properties
+			if (this.hasFlag(reader.objectFlags.RF_HasStack)) {
+				// Not actually a property but include it anyway for completeness
+				properties.push(new StateFrame());
+			}
+
+			// The first byte of property block is a name table index
+			let currentPropName = reader.nameTable[reader.getCompactIndex()].name;
+
+			while (currentPropName.toLowerCase() !== "none") {
+				const prop = {};
+
+				// Next byte contains property info (type, size, etc.)
+				const infoByte = reader.getUint8();
+
+				prop.name = currentPropName;
+				prop.type = reader.propertyTypes[infoByte & 0xF];
+
+				// If the property type is a struct then the struct name follows
+				if (prop.type === "Struct") {
+					prop.subtype = reader.nameTable[reader.getCompactIndex()].name;
+				}
+
+				/**
+				 * The size value is interpreted in the following way:
+				 *   0 = 1 byte
+				 *   1 = 2 bytes
+				 *   2 = 4 bytes
+				 *   3 = 12 bytes
+				 *   4 = 16 bytes
+				 *   5 = a byte follows with real size
+				 *   6 = a word follows with real size
+				 *   7 = an integer follows with real size
+				 */
+				const propSizeInfo = (infoByte >> 4) & 0x7;
+				let propSize;
+
+				switch (propSizeInfo) {
+					case 0: propSize = 1;  break;
+					case 1: propSize = 2;  break;
+					case 2: propSize = 4;  break;
+					case 3: propSize = 12; break;
+					case 4: propSize = 16; break;
+
+					case 5:
+						propSize = reader.getUint8();
+					break;
+
+					case 6:
+						propSize = reader.getUint16();
+					break;
+
+					case 7:
+						propSize = reader.getUint32();
+					break;
+
+					default:
+						propSize = 1;
+					break;
+				}
+
+				// Property special flags
+				const arrayFlag = Boolean(infoByte >> 7);
+
+				if (prop.type !== "Boolean" && arrayFlag) {
+					let prevProp, arrayIndex;
+
+					if (properties.length > 0) {
+						prevProp = properties[properties.length - 1];
+
+						if (prevProp.name === prop.name && prevProp.subtype === undefined) {
+							prevProp.subtype = "Array";
+							prevProp.index   = 0;
+						}
+
+						properties[properties.length - 1] = prevProp;
+					}
+
+					if (prevProp && prevProp.index !== undefined) {
+						if (prevProp.index >= 0x3FFF) {
+							arrayIndex = reader.getUint32() & 0x3FFFFFFF;
+						} else if (prevProp.index >= 0x7F) {
+							arrayIndex = reader.getUint16() & 0x7FFF;
+						} else {
+							arrayIndex = reader.getUint8();
+						}
+					} else {
+						arrayIndex = reader.getUint8();
+					}
+
+					prop.aggtype = "Array";
+					prop.index   = arrayIndex;
+				}
+
+				// Assign property value
+				switch (prop.type) {
+					case "Byte":
+						prop.value = reader.getUint8();
+					break;
+
+					case "Integer":
+						prop.value = reader.getInt32();
+					break;
+
+					case "Boolean":
+						prop.value = arrayFlag;
+					break;
+
+					case "Float":
+						prop.value = reader.getFloat32();
+					break;
+
+					case "Object":
+						prop.value = reader.getCompactIndex();
+					break;
+
+					case "Name":
+						prop.value = reader.nameTable[reader.getCompactIndex()].name;
+					break;
+
+					// Handled later
+					case "Class":
+					break;
+
+					case "Struct":
+						switch (prop.subtype.toLowerCase()) {
+							case "color":
+								prop.value = new Colour();
+							break;
+
+							case "vector":
+								prop.value = new Vector();
+							break;
+
+							case "rotator":
+								prop.value = new Rotator();
+							break;
+
+							case "scale":
+								prop.value = new Scale();
+							break;
+
+							case "pointregion":
+								prop.value = new PointRegion();
+							break;
+
+							default:
+								reader.offset += propSize;
+							break;
+						}
+					break;
+
+					case "Str":
+						prop.value = reader.getStringProperty();
+					break;
+
+					// Unknown
+					case "String":
+					case "Array":
+					case "Vector":
+					case "Rotator":
+					case "Map":
+					case "Fixed Array":
+					default:
+						reader.offset += propSize;
+					break;
+				}
+
+				properties.push(prop);
+
+				currentPropName = reader.nameTable[reader.getCompactIndex()].name;
+			}
+
+			return properties;
 		}
 
 		get classObject() {
