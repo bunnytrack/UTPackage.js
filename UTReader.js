@@ -171,6 +171,24 @@ window.UTReader = function(arrayBuffer) {
 		get packageName() {
 			return this.packageObject?.objectName || null;
 		}
+
+		get isInPackage() {
+			return Boolean(this.packageObject);
+		}
+
+		get uppermostPackageObject() {
+			let parent = this;
+
+			while (parent.packageObject) {
+				parent = parent.packageObject;
+			}
+
+			return parent;
+		}
+
+		get uppermostPackageObjectName() {
+			return this.uppermostPackageObject.objectName;
+		}
 	}
 
 	class ExportTableObject extends UObject {
@@ -183,7 +201,7 @@ window.UTReader = function(arrayBuffer) {
 			this.object_flags      = reader.getUint32();
 			this.serial_size       = reader.getCompactIndex();
 
-			if (this.serial_size > 0) {
+			if (this.hasData) {
 				this.serial_offset = reader.getCompactIndex();
 			}
 		}
@@ -391,6 +409,10 @@ window.UTReader = function(arrayBuffer) {
 			return Object.keys(reader.objectFlags).filter(name => {
 				return reader.objectFlags[name] & this.object_flags;
 			})
+		}
+
+		get hasData() {
+			return this.serial_size > 0;
 		}
 
 		get table() {
