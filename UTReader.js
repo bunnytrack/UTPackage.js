@@ -101,8 +101,6 @@ window.UTReader = function(arrayBuffer) {
 			}
 		}
 
-		const signed = (value & 0x80) === 0x80;
-
 		value &= 0x3F;
 
 		for (let i = 1; i < Math.min(length, 4); i++) {
