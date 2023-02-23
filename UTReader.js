@@ -548,7 +548,10 @@ window.UTReader = function(arrayBuffer) {
 	class BoundingSphere {
 		constructor() {
 			this.centre = new Vector();
-			this.radius = reader.getFloat32();
+
+			if (reader.header.version > 61) {
+				this.radius = reader.getFloat32();
+			}
 		}
 	}
 
@@ -1030,7 +1033,13 @@ window.UTReader = function(arrayBuffer) {
 		constructor(modelObject) {
 			super(modelObject);
 
-			if (reader.header.version > 61) {
+			if (reader.header.version <= 61) {
+				this.vectors  = reader.getCompactIndex();
+				this.points   = reader.getCompactIndex();
+				this.nodes    = reader.getCompactIndex();
+				this.surfaces = reader.getCompactIndex();
+				this.vertices = reader.getCompactIndex();
+			} else {
 				this.vectors = new Array(reader.getCompactIndex());
 
 				for (let i = 0; i < this.vectors.length; i++) {
@@ -1068,8 +1077,9 @@ window.UTReader = function(arrayBuffer) {
 				for (let i = 0; i < this.zones.length; i++) {
 					this.zones[i] = new Zone();
 				}
+			}
 
-				this.polys = reader.getCompactIndex();
+			this.polys = reader.getCompactIndex();
 
 				this.light_map = new Array(reader.getCompactIndex());
 
@@ -1104,12 +1114,16 @@ window.UTReader = function(arrayBuffer) {
 				this.lights = new Array(reader.getCompactIndex());
 
 				for (let i = 0; i < this.lights.length; i++) {
-					this.lights[i] = reader.getCompactIndex();
-				}
-
-				this.root_outside = reader.getUint32() > 0;
-				this.linked       = reader.getUint32() > 0;
+				this.lights[i] = reader.getCompactIndex();
 			}
+
+			if (reader.header.version <= 61) {
+				this.leaf_zone = reader.getCompactIndex();
+				this.leaf_leaf = reader.getCompactIndex();
+			}
+
+			this.root_outside = reader.getUint32() > 0;
+			this.linked       = reader.getUint32() > 0;
 		}
 	}
 
