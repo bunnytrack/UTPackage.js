@@ -425,6 +425,32 @@ window.UTReader = function(arrayBuffer) {
 		hasFlag(flag) {
 			return Boolean(this.object_flags & flag);
 		}
+
+		readData() {
+			let objectClass;
+
+			switch (this.className) {
+				case "Animation"    : objectClass = UAnimation;    break;
+				case "Font"         : objectClass = UFont;         break;
+				case "Level"        : objectClass = ULevel;        break;
+				case "LodMesh"      : objectClass = ULodMesh;      break;
+				case "Mesh"         : objectClass = UMesh;         break;
+				case "Model"        : objectClass = UModel;        break;
+				case "Music"        : objectClass = UMusic;        break;
+				case "Palette"      : objectClass = UPalette;      break;
+				case "Polys"        : objectClass = UPolys;        break;
+				case "SkeletalMesh" : objectClass = USkeletalMesh; break;
+				case "Sound"        : objectClass = USound;        break;
+				case "TextBuffer"   : objectClass = UTextBuffer;   break;
+				case "Texture"      : objectClass = UTexture;      break;
+				default: return null;
+			}
+
+			return {
+				properties: this.properties,
+				...new objectClass(),
+			}
+		}
 	}
 
 	class ImportTableObject extends UObject {
@@ -446,17 +472,6 @@ window.UTReader = function(arrayBuffer) {
 
 		get table() {
 			return "import";
-		}
-	}
-
-	/**
-	 * Generic class for reading package objects
-	 */
-	class UTObject {
-		constructor(object) {
-			reader.seek(object.serial_offset);
-			this.object_name = object.objectName;
-			this.properties  = object.properties;
 		}
 	}
 
@@ -937,10 +952,8 @@ window.UTReader = function(arrayBuffer) {
 	/**
 	 * UT native classes
 	 */
-	class ULevelBase extends UTObject {
-		constructor(levelObject) {
-			super(levelObject);
-
+	class ULevelBase {
+		constructor() {
 			this.actors = new Array(reader.getUint32());
 
 			// Seems to be repeated...
@@ -955,8 +968,8 @@ window.UTReader = function(arrayBuffer) {
 	}
 
 	class ULevel extends ULevelBase {
-		constructor(levelObject) {
-			super(levelObject);
+		constructor() {
+			super();
 
 			this.model       = reader.getObject(reader.getCompactIndex());
 			this.reach_specs = new Array(reader.getCompactIndex());
@@ -983,10 +996,8 @@ window.UTReader = function(arrayBuffer) {
 		}
 	}
 
-	class UTexture extends UTObject {
-		constructor(textureObject) {
-			super(textureObject);
-
+	class UTexture {
+		constructor() {
 			this.mip_maps = new Array(reader.getUint8());
 
 			for (let i = 0; i < this.mip_maps.length; i++) {
@@ -995,10 +1006,8 @@ window.UTReader = function(arrayBuffer) {
 		}
 	}
 
-	class UPalette extends UTObject {
-		constructor(paletteObject) {
-			super(paletteObject);
-
+	class UPalette {
+		constructor() {
 			this.colours = new Array(reader.getCompactIndex());
 
 			for (let i = 0; i < this.colours.length; i++) {
@@ -1007,13 +1016,11 @@ window.UTReader = function(arrayBuffer) {
 		}
 	}
 
-	class UPolys extends UTObject {
-		constructor(polysObject) {
-			super(polysObject);
-
+	class UPolys {
+		constructor() {
 			this.poly_count = reader.getUint32();
 
-			// Seems to be repeated...
+			// Seems to be repeated... (check source code)
 			reader.offset += 4;
 
 			this.polys = new Array(this.poly_count);
@@ -1024,18 +1031,16 @@ window.UTReader = function(arrayBuffer) {
 		}
 	}
 
-	class UPrimitive extends UTObject {
-		constructor(modelObject) {
-			super(modelObject);
-
+	class UPrimitive {
+		constructor() {
 			this.bounding_box    = new BoundingBox();
 			this.bounding_sphere = new BoundingSphere();
 		}
 	}
 
 	class UModel extends UPrimitive {
-		constructor(modelObject) {
-			super(modelObject);
+		constructor() {
+			super();
 
 			if (reader.header.version <= 61) {
 				this.vectors  = reader.getCompactIndex();
@@ -1132,8 +1137,8 @@ window.UTReader = function(arrayBuffer) {
 	}
 
 	class UMesh extends UPrimitive {
-		constructor(meshObject) {
-			super(meshObject);
+		constructor() {
+			super();
 
 			if (reader.header.version > 61) {
 				this.vertices_jump = reader.getUint32();
@@ -1222,8 +1227,8 @@ window.UTReader = function(arrayBuffer) {
 	}
 
 	class ULodMesh extends UMesh {
-		constructor(lodMeshObject) {
-			super(lodMeshObject);
+		constructor() {
+			super();
 
 			this.collapse_point_thus = new Array(reader.getCompactIndex());
 
@@ -1287,8 +1292,8 @@ window.UTReader = function(arrayBuffer) {
 	}
 
 	class USkeletalMesh extends ULodMesh {
-		constructor(skeletalMeshObject) {
-			super(skeletalMeshObject);
+		constructor() {
+			super();
 
 			this.ext_wedges = new Array(reader.getCompactIndex());
 
@@ -1333,10 +1338,8 @@ window.UTReader = function(arrayBuffer) {
 		}
 	}
 
-	class UAnimation extends UTObject {
-		constructor(animationObject) {
-			super(animationObject);
-
+	class UAnimation {
+		constructor() {
 			this.bones = new Array(reader.getCompactIndex());
 
 			for (let i = 0; i < this.bones.length; i++) {
@@ -1357,10 +1360,8 @@ window.UTReader = function(arrayBuffer) {
 		}
 	}
 
-	class UMusic extends UTObject {
-		constructor(musicObject) {
-			super(musicObject);
-
+	class UMusic {
+		constructor() {
 			// If the package itself only contains music (.umx) then the first name table entry is the format.
 			// This is not always the case if the music is embedded in a map, for example.
 			this.format          = reader.nameTable[reader.getCompactIndex()].name;
@@ -1370,10 +1371,8 @@ window.UTReader = function(arrayBuffer) {
 		}
 	}
 
-	class USound extends UTObject {
-		constructor(soundObject) {
-			super(soundObject);
-
+	class USound {
+		constructor() {
 			this.format = reader.nameTable[reader.getCompactIndex()].name;
 
 			if (reader.header.version >= 63) {
@@ -1385,10 +1384,8 @@ window.UTReader = function(arrayBuffer) {
 		}
 	}
 
-	class UTextBuffer extends UTObject {
-		constructor(textBufferObject) {
-			super(textBufferObject);
-
+	class UTextBuffer {
+		constructor() {
 			this.pos  = reader.getUint32();
 			this.top  = reader.getUint32();
 			this.size = reader.getCompactIndex();
@@ -1400,10 +1397,8 @@ window.UTReader = function(arrayBuffer) {
 		}
 	}
 
-	class UFont extends UTObject {
-		constructor(fontObject) {
-			super(fontObject);
-
+	class UFont {
+		constructor() {
 			this.textures = new Array(reader.getUint8());
 
 			for (let i = 0; i < this.textures.length; i++) {
@@ -2056,7 +2051,7 @@ window.UTReader = function(arrayBuffer) {
 	}
 
 	this.getLevelObjects = function() {
-		return reader.getObjectsByClass("Level").map(item => new ULevel(item));
+		return reader.getObjectsByClass("Level");
 	}
 
 	this.getAllMeshObjects = function() {
@@ -2079,11 +2074,11 @@ window.UTReader = function(arrayBuffer) {
 		data.brush.properties = brushObject.properties;
 
 		// Model
-		const modelIndex = data.brush.properties.find(prop => prop.name.toLowerCase() === "brush");
+		const brushProp = brushObject.getProp("brush");
 
-		if (modelIndex) {
-			const modelObject = reader.getObject(modelIndex.value);
-			const modelData   = reader.getUModel(modelObject);
+		if (brushProp) {
+			const modelObject = reader.getObject(brushProp.value);
+			const modelData   = modelObject.readData();
 
 			data.model.object = modelObject;
 			data.model.properties = modelData;
@@ -2091,7 +2086,7 @@ window.UTReader = function(arrayBuffer) {
 			// Polys
 			if (modelData.polys !== 0) {
 				const polyObject = reader.getObject(modelData.polys);
-				const polysData  = reader.getUPolys(polyObject);
+				const polysData  = polyObject.readData();
 
 				data.polys.object   = polyObject;
 				data.polys.polygons = polysData.polys;
@@ -2123,36 +2118,14 @@ window.UTReader = function(arrayBuffer) {
 		return allBrushData;
 	}
 
-	this.getAnimations = function() {
-		const animations       = [];
-		const animationObjects = reader.getObjectsByClass("Animation");
-
-		for (const animationObject of animationObjects) {
-			animations.push(new UAnimation(animationObject));
-		}
-
-		return animations;
-	}
-
 	this.getTextBuffer = function(textBufferObject) {
-		const textBuffer = new UTextBuffer(textBufferObject);
+		const textBuffer = textBufferObject.readData();
 
-		if (textBufferObject.package_index !== 0) {
+		if (textBufferObject.isInPackage) {
 			textBuffer.package = textBufferObject.packageName;
 		}
 
 		return textBuffer;
-	}
-
-	this.getFonts = function() {
-		const fonts       = [];
-		const fontObjects = reader.getObjectsByClass("Font");
-
-		for (const fontObject of fontObjects) {
-			fonts.push(new UFont(fontObject));
-		}
-
-		return fonts;
 	}
 
 	this.getTextureInfo = function(textureObject) {
@@ -2207,9 +2180,11 @@ window.UTReader = function(arrayBuffer) {
 		const SUBCHUNK_SIZE_PCM = 0x10;
 
 		for (const soundObject of soundObjects) {
-			const sound = new USound(soundObject);
+			const sound = soundObject.readData();
 
-			if (soundObject.package_index !== 0) {
+			sound.name = soundObject.objectName;
+
+			if (soundObject.isInPackage) {
 				sound.package = soundObject.packageName;
 			}
 
@@ -2265,14 +2240,6 @@ window.UTReader = function(arrayBuffer) {
 		return hsl;
 	}
 
-	this.getUModel = function(modelObject) {
-		return new UModel(modelObject);
-	}
-
-	this.getUPolys = function(polysObject) {
-		return new UPolys(polysObject);
-	}
-
 	this.getPolyFlags = function(flags) {
 		const polyFlags = [];
 
@@ -2289,35 +2256,10 @@ window.UTReader = function(arrayBuffer) {
 		return polyFlags;
 	}
 
-	this.getMeshData = function(meshObject) {
-		return new UMesh(meshObject);
-	}
-
-	this.getLodMeshData = function(lodMeshObject) {
-		return new ULodMesh(lodMeshObject);
-	}
-
-	this.getSkeletalMeshData = function(skeletalMeshObject) {
-		return new USkeletalMesh(skeletalMeshObject);
-	}
-
-	this.getPalette = function(paletteObject) {
-		return new UPalette(paletteObject);
-	}
-
-	this.getPaletteObjectFromTexture = function(textureObject) {
-		for (const prop of textureObject.properties) {
-			if (prop.name.toLowerCase() === "palette") {
-				return reader.getObject(prop.value);
-			}
-		}
-
-		return null;
-	}
-
 	this.getPaletteCanvas = function(textureObject, callback) {
-		const paletteObject = reader.getPaletteObjectFromTexture(textureObject);
-		const paletteData   = reader.getPalette(paletteObject);
+		const paletteProp = textureObject.getProp("palette");
+		const paletteObject = reader.getObject(paletteProp.value);
+		const paletteData = paletteObject.readData();
 
 		const canvas  = document.createElement("canvas");
 		const context = canvas.getContext("2d");
@@ -2345,43 +2287,29 @@ window.UTReader = function(arrayBuffer) {
 		return paletteData;
 	}
 
-	this.getTexture = function(textureObject) {
-		return new UTexture(textureObject);
-	}
-
-	this.getTextureData = function(textureObject) {
-		const texture = reader.getTexture(textureObject);
-
-		// Find this texture's palette object
-		const paletteObject = reader.getPaletteObjectFromTexture(textureObject);
-
-		// Get palette colour data
-		const paletteData = reader.getPalette(paletteObject);
-
-		texture.palette = paletteData;
-
-		return texture;
-	}
-
 	this.textureToCanvas = function(textureObject, callback) {
+		const textureData = textureObject.readData();
+		const [mipMap, ...rest] = textureData.mip_maps;
+
+		const paletteProp = textureObject.getProp("palette");
+		const paletteObject = reader.getObject(paletteProp.value);
+		const paletteData = paletteObject.readData();
+
 		const canvas  = document.createElement("canvas");
 		const context = canvas.getContext("2d");
 
-		const textureData = reader.getTextureData(textureObject);
-
-		canvas.width  = textureData.mip_maps[0].width;
-		canvas.height = textureData.mip_maps[0].height;
+		canvas.width  = mipMap.width;
+		canvas.height = mipMap.height;
 
 		const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
 
-		createImageBitmap(imageData).then(function(imageBitmap) {
-			let i = 0;
+		let i = 0;
 
-			for (const pixel of textureData.mip_maps[0].data) {
-				const colour = textureData.palette.colours[pixel];
+		for (const pixel of mipMap.data) {
+			const colour = paletteData.colours[pixel];
 
-				imageData.data[i++] = colour.r;
-				imageData.data[i++] = colour.g;
+			imageData.data[i++] = colour.r;
+			imageData.data[i++] = colour.g;
 				imageData.data[i++] = colour.b;
 				// imageData.data[i++] = colour.a;
 
@@ -2390,13 +2318,11 @@ window.UTReader = function(arrayBuffer) {
 				imageData.data[i++] = 0xFF;
 			}
 
-			context.putImageData(imageData, 0, 0);
+		context.putImageData(imageData, 0, 0);
 
-			callback({
-				canvas : canvas,
-				bitmap : imageBitmap,
-				name   : textureData.object_name,
-			})
+		return callback({
+			canvas : canvas,
+			name   : textureObject.objectName,
 		})
 	}
 
