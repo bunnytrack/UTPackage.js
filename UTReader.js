@@ -2287,7 +2287,7 @@ window.UTReader = function(arrayBuffer) {
 		return paletteData;
 	}
 
-	this.textureToCanvas = function(textureObject, callback) {
+	this.textureToCanvas = function(textureObject) {
 		const textureData = textureObject.readData();
 		const [mipMap, ...rest] = textureData.mip_maps;
 
@@ -2320,70 +2320,54 @@ window.UTReader = function(arrayBuffer) {
 
 		context.putImageData(imageData, 0, 0);
 
-		return callback({
-			canvas : canvas,
-			name   : textureObject.objectName,
-		})
+		return canvas;
 	}
 
-	this.getScreenshot = function(callback) {
+	this.getScreenshot = function() {
 		// Multiple screenshots can be embedded to create a montage effect by
 		// consecutively naming MyLevel textures "Screenshot1", "Screenshot2", etc.
+		const screenshots = [];
 		const screenshotRegEx = new RegExp("^Screenshot([0-9]+)?$", "i");
-		const screenshotObjects = reader.exportTable.filter(item => screenshotRegEx.test(item.objectName))
-
-		let screenshotFound = false;
+		const screenshotObjects = reader.getTextureObjects().filter(item => screenshotRegEx.test(item.objectName));
 
 		if (screenshotObjects.length > 0) {
-			const screenshots = [];
+			const tempScreenshots = screenshotObjects.map(item => {
+				return {
+					canvas: reader.textureToCanvas(item),
+					name: item.objectName,
+				}
+			})
 
-			for (let i = 0; i < screenshotObjects.length; i++) {
-				reader.textureToCanvas(screenshotObjects[i], function(screenshot) {
-					screenshots.push(screenshot);
+			// Sort numerically as name table doesn't guarantee order
+			tempScreenshots.sort((a, b) => {
+				const numA = Number(a.name.substring("Screenshot".length));
+				const numB = Number(b.name.substring("Screenshot".length));
+				return numA - numB;
+			})
 
-					if (screenshots.length === screenshotObjects.length) {
-						// Sort numerically as name table doesn't guarantee order
-						screenshots.sort((a, b) => {
-							const numA = Number(a.name.substring("Screenshot".length));
-							const numB = Number(b.name.substring("Screenshot".length));
-							return numA - numB;
-						})
-						callback(screenshots);
-					}
-				})
-			}
-
-			screenshotFound = true;
-		}
-
-		else {
-			// Officially, the map screenshot should be named "Screenshot"; however, it's possible to set this value
-			// to a different texture. It won't appear in-game, but is still saved in the LevelSummary actor.
+			tempScreenshots.forEach(item => screenshots.push(item.canvas));
+		} else {
+			// Officially, the map screenshot should be a texture named "Screenshot",
+			// but sometimes it's set to a different texture (e.g. CTF-BT-Slaughter).
+			// It won't appear in-game, but is still saved in the LevelSummary actor.
 			const levelInfo = reader.getExportObjectByName("LevelInfo0");
 
 			if (levelInfo) {
-				for (const prop of levelInfo.properties) {
-					if (prop.name === "Screenshot") {
-						const invalidScreenshot = reader.getObject(prop.value);
+				const screenshotProp = levelInfo.getProp("Screenshot");
 
-						// Final check - can't show screenshot if it's linked to an external package (e.g. CTF-BT-Brazilian-novice).
-						if (invalidScreenshot.table !== "import") {
-							reader.textureToCanvas(invalidScreenshot, function(screenshot) {
-								callback([screenshot]); // return as array for consistency
-							})
+				if (screenshotProp) {
+					const invalidScreenshot = reader.getObject(screenshotProp.value);
 
-							screenshotFound = true;
-						}
-
-						break;
+					// Final check - can't show screenshot if it's linked to an external package (e.g. CTF-BT-Brazilian-novice).
+					if (invalidScreenshot.table !== "import") {
+						const canvas = reader.textureToCanvas(invalidScreenshot);
+						screenshots.push(canvas);
 					}
 				}
 			}
 		}
 
-		if (!screenshotFound) {
-			callback([]);
-		}
+		return screenshots;
 	}
 
 	this.getLevelSummary = function(allProperties = false) {
