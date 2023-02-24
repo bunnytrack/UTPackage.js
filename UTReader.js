@@ -418,6 +418,10 @@ window.UTReader = function(arrayBuffer) {
 			return "export";
 		}
 
+		getProp(name) {
+			return this.properties.find(prop => prop.name.toLowerCase() === name.toLowerCase());
+		}
+
 		hasFlag(flag) {
 			return Boolean(this.object_flags & flag);
 		}
