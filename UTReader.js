@@ -949,6 +949,15 @@ window.UTReader = function(arrayBuffer) {
 		}
 	}
 
+	class FontCharacter {
+		constructor() {
+			this.x      = reader.getUint32();
+			this.y      = reader.getUint32();
+			this.width  = reader.getUint32();
+			this.height = reader.getUint32();
+		}
+	}
+
 	/**
 	 * UT native classes
 	 */
@@ -1408,12 +1417,7 @@ window.UTReader = function(arrayBuffer) {
 				fontTexture.characters = new Array(reader.getCompactIndex());
 
 				for (let j = 0; j < fontTexture.characters.length; j++) {
-					fontTexture.characters[j] = {};
-
-					fontTexture.characters[j].x      = reader.getUint32();
-					fontTexture.characters[j].y      = reader.getUint32();
-					fontTexture.characters[j].width  = reader.getUint32();
-					fontTexture.characters[j].height = reader.getUint32();
+					fontTexture.characters[j] = new FontCharacter();
 				}
 
 				this.textures[i] = fontTexture;
