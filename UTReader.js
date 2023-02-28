@@ -453,6 +453,7 @@ window.UTReader = function(arrayBuffer) {
 				case "Palette"      : objectClass = UPalette;      break;
 				case "Polys"        : objectClass = UPolys;        break;
 				case "SkeletalMesh" : objectClass = USkeletalMesh; break;
+				case "SkelModel"    : objectClass = USkelModel;    break;
 				case "Sound"        : objectClass = USound;        break;
 				case "TextBuffer"   : objectClass = UTextBuffer;   break;
 				case "Texture"      : objectClass = UTexture;      break;
@@ -838,6 +839,14 @@ window.UTReader = function(arrayBuffer) {
 		}
 	}
 
+	class JointState {
+		constructor() {
+			this.pos   = new Vector();
+			this.rot   = new Rotator();
+			this.scale = new Scale();
+		}
+	}
+
 	class Zone {
 		constructor() {
 			this.zone_actor   = reader.getCompactIndex();
@@ -1212,6 +1221,116 @@ window.UTReader = function(arrayBuffer) {
 			this.default_animation   = reader.getObject(reader.getCompactIndex());
 			this.weapon_bone_index   = reader.getUint32();
 			this.weapon_adjust     = new SkeletalMeshWeaponAdjust();
+		}
+	}
+
+	class USkelModel extends UPrimitive {
+		constructor() {
+			super();
+
+			this.num_meshes    = reader.getInt32();
+			this.num_joints    = reader.getInt32();
+			this.num_frames    = reader.getInt32();
+			this.num_sequences = reader.getInt32();
+			this.num_skins     = reader.getInt32();
+			this.root_joint    = reader.getInt32();
+			this.meshes        = TArray(RMesh);
+			this.joints        = TArray(RJoint);
+			this.anim_seqs     = TArray(RSkelAnimSeq);
+			this.frames        = TArray(RAnimFrame);
+			this.pos_offset    = new Vector();
+			this.rot_offset    = new Rotator();
+		}
+	}
+
+	class RMesh {
+		constructor() {
+			this.num_verts = reader.getInt32();
+			this.num_tris  = reader.getInt32();
+			this.tris      = TArray(RTriangle);
+			this.verts     = TArray(RVertex);
+			this.dec_count = reader.getInt32();
+
+			this.dec = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.dec.length; i++) {
+				this.dec[i] = reader.getInt8();
+			}
+
+			const NUM_POLYGROUPS = 16;
+
+			this.group_flags = new Array(NUM_POLYGROUPS);
+			this.poly_group_skin_names = new Array(NUM_POLYGROUPS);
+
+			for (let i = 0; i < NUM_POLYGROUPS; i++) {
+				this.group_flags[i] = reader.getInt32();
+				this.poly_group_skin_names[i] = reader.nameTable[reader.getCompactIndex()].name;
+			}
+		}
+	}
+
+	class RTriangle {
+		constructor() {
+			this.vertex_index_1 = reader.getInt16();
+			this.vertex_index_2 = reader.getInt16();
+			this.vertex_index_3 = reader.getInt16();
+			this.vertex_1_u     = reader.getInt8();
+			this.vertex_1_v     = reader.getInt8();
+			this.vertex_2_u     = reader.getInt8();
+			this.vertex_2_v     = reader.getInt8();
+			this.vertex_3_u     = reader.getInt8();
+			this.vertex_3_v     = reader.getInt8();
+			this.polygroup      = reader.getInt8();
+		}
+	}
+
+	class RVertex {
+		constructor() {
+			this.point1  = new Vector();
+			this.point2  = new Vector();
+			this.joint1  = reader.getInt32();
+			this.joint2  = reader.getInt32();
+			this.weight1 = reader.getFloat32();
+		}
+	}
+
+	class RJoint {
+		constructor() {
+			const MAX_CHILD_JOINTS = 4;
+
+			this.parent = reader.getInt32();
+			this.children = new Array(MAX_CHILD_JOINTS);
+
+			for (let i = 0; i < this.children.length; i++) {
+				this.children[i] = reader.getInt32();
+			}
+
+			this.name = reader.nameTable[reader.getCompactIndex()].name;
+			this.jointgroup = reader.getInt32();
+			this.flags = reader.getInt32();
+			this.baserot = new Rotator();
+			this.planes = TArray(Plane, 6);
+		}
+	}
+
+	class RSkelAnimSeq extends MeshAnimationSequence {
+		constructor() {
+			super();
+
+			this.anim_data = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.anim_data.length; i++) {
+				this.anim_data[i] = reader.getInt8();
+			}
+		}
+	}
+
+	class RAnimFrame {
+		constructor() {
+			this.sequence_id = reader.getInt16();
+			this.event = reader.nameTable[reader.getCompactIndex()].name;
+			this.bounds = new BoundingBox();
+			this.joint_anim = TArray(JointState);
 		}
 	}
 
