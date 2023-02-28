@@ -489,6 +489,15 @@ window.UTReader = function(arrayBuffer) {
 	}
 
 	/**
+	 * Templated array
+	 */
+	const TArray = (type, size) => {
+		const array = new Array(size ?? reader.getCompactIndex());
+		for (let i = 0; i < array.length; i++) array[i] = new type();
+		return array;
+	}
+
+	/**
 	 * UMOD file data
 	 */
 	class UMODFile {
@@ -814,12 +823,7 @@ window.UTReader = function(arrayBuffer) {
 				this.bones[i] = reader.getUint32();
 			}
 
-			this.animation_tracks = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.animation_tracks.length; i++) {
-				this.animation_tracks[i] = new AnimationTrack();
-			}
-
+			this.animation_tracks = TArray(AnimationTrack);
 			this.root_track = new AnimationTrack();
 		}
 	}
@@ -827,17 +831,8 @@ window.UTReader = function(arrayBuffer) {
 	class AnimationTrack {
 		constructor() {
 			this.flags = reader.getUint32();
-			this.key_quaternions = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.key_quaternions.length; i++) {
-				this.key_quaternions[i] = new Quaternion();
-			}
-
-			this.key_positions = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.key_positions.length; i++) {
-				this.key_positions[i] = new Vector();
-			}
+			this.key_quaternions = TArray(Quaternion);
+			this.key_positions = TArray(Vector);
 
 			this.key_time = new Array(reader.getCompactIndex());
 
@@ -993,13 +988,8 @@ window.UTReader = function(arrayBuffer) {
 		constructor() {
 			super();
 
-			this.model       = reader.getObject(reader.getCompactIndex());
-			this.reach_specs = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.reach_specs.length; i++) {
-				this.reach_specs[i] = new ReachSpec();
-			}
-
+			this.model         = reader.getObject(reader.getCompactIndex());
+			this.reach_specs   = TArray(ReachSpec);
 			this.approx_time   = reader.getFloat32();
 			this.first_deleted = reader.getCompactIndex();
 			this.text_blocks   = new Array(16);
@@ -1009,32 +999,20 @@ window.UTReader = function(arrayBuffer) {
 			}
 
 			if (reader.header.version > 62) {
-				this.travel_info = new Array(reader.getCompactIndex());
-
-				for (let i = 0; i < this.travel_info.length; i++) {
-					this.travel_info[i] = new LevelMap();
-				}
+				this.travel_info = TArray(LevelMap);
 			}
 		}
 	}
 
 	class UTexture {
 		constructor() {
-			this.mip_maps = new Array(reader.getUint8());
-
-			for (let i = 0; i < this.mip_maps.length; i++) {
-				this.mip_maps[i] = new MipMap();
-			}
+			this.mip_maps = TArray(MipMap, reader.getUint8());
 		}
 	}
 
 	class UPalette {
 		constructor() {
-			this.colours = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.colours.length; i++) {
-				this.colours[i] = new Colour();
-			}
+			this.colours = TArray(Colour);
 		}
 	}
 
@@ -1045,11 +1023,7 @@ window.UTReader = function(arrayBuffer) {
 			// Seems to be repeated... (check source code)
 			reader.offset += 4;
 
-			this.polys = new Array(this.poly_count);
-
-			for (let i = 0; i < this.polys.length; i++) {
-				this.polys[i] = new Polygon();
-			}
+			this.polys = TArray(Polygon, this.poly_count);
 		}
 	}
 
@@ -1071,78 +1045,35 @@ window.UTReader = function(arrayBuffer) {
 				this.surfaces = reader.getCompactIndex();
 				this.vertices = reader.getCompactIndex();
 			} else {
-				this.vectors = new Array(reader.getCompactIndex());
-
-				for (let i = 0; i < this.vectors.length; i++) {
-					this.vectors[i] = new Vector();
-				}
-
-				this.points = new Array(reader.getCompactIndex());
-
-				for (let i = 0; i < this.points.length; i++) {
-					this.points[i] = new Vector();
-				}
-
-				this.nodes = new Array(reader.getCompactIndex());
-
-				for (let i = 0; i < this.nodes.length; i++) {
-					this.nodes[i] = new BspNode();
-				}
-
-				this.surfaces = new Array(reader.getCompactIndex());
-
-				for (let i = 0; i < this.surfaces.length; i++) {
-					this.surfaces[i] = new BspSurface();
-				}
-
-				this.vertices = new Array(reader.getCompactIndex());
-
-				for (let i = 0; i < this.vertices.length; i++) {
-					this.vertices[i] = new ModelVertex();
-				}
-
-				this.shared_sides = reader.getUint32();
-
-				this.zones = new Array(reader.getUint32());
-
-				for (let i = 0; i < this.zones.length; i++) {
-					this.zones[i] = new Zone();
-				}
+				this.vectors          = TArray(Vector);
+				this.points           = TArray(Vector);
+				this.nodes            = TArray(BspNode);
+				this.surfaces         = TArray(BspSurface);
+				this.vertices         = TArray(ModelVertex);
+				this.num_shared_sides = reader.getInt32();
+				this.num_zones        = reader.getInt32();
+				this.zones            = TArray(Zone, this.num_zones);
 			}
 
 			this.polys = reader.getCompactIndex();
+			this.light_map = TArray(LightMap);
+			this.light_bits = new Array(reader.getCompactIndex());
 
-				this.light_map = new Array(reader.getCompactIndex());
+			for (let i = 0; i < this.light_bits.length; i++) {
+				this.light_bits[i] = reader.getUint8();
+			}
 
-				for (let i = 0; i < this.light_map.length; i++) {
-					this.light_map[i] = new LightMap();
-				}
+			this.bounds = TArray(BoundingBox);
 
-				this.light_bits = new Array(reader.getCompactIndex());
+			this.leaf_hulls = new Array(reader.getCompactIndex());
 
-				for (let i = 0; i < this.light_bits.length; i++) {
-					this.light_bits[i] = reader.getUint8();
-				}
+			for (let i = 0; i < this.leaf_hulls.length; i++) {
+				this.leaf_hulls[i] = reader.getInt32();
+			}
 
-				this.bounds = new Array(reader.getCompactIndex());
+			this.leaves = TArray(BspLeaf);
 
-				for (let i = 0; i < this.bounds.length; i++) {
-					this.bounds[i] = new BoundingBox();
-				}
-
-				this.leaf_hulls = new Array(reader.getCompactIndex());
-
-				for (let i = 0; i < this.leaf_hulls.length; i++) {
-					this.leaf_hulls[i] = reader.getUint32();
-				}
-
-				this.leaves = new Array(reader.getCompactIndex());
-
-				for (let i = 0; i < this.leaves.length; i++) {
-					this.leaves[i] = new BspLeaf();
-				}
-
-				this.lights = new Array(reader.getCompactIndex());
+			this.lights = new Array(reader.getCompactIndex());
 
 				for (let i = 0; i < this.lights.length; i++) {
 				this.lights[i] = reader.getCompactIndex();
@@ -1166,36 +1097,16 @@ window.UTReader = function(arrayBuffer) {
 				this.vertices_jump = reader.getUint32();
 			}
 
-			this.vertices = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.vertices.length; i++) {
-				this.vertices[i] = new MeshVertex();
-			}
+			this.vertices = TArray(MeshVertex);
 
 			if (reader.header.version > 61) {
 				this.triangles_jump = reader.getUint32();
 			}
 
-			this.triangles = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.triangles.length; i++) {
-				this.triangles[i] = new MeshTriangle();
-			}
-
-			this.anim_sequences = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.anim_sequences.length; i++) {
-				this.anim_sequences[i] = new MeshAnimationSequence();
-			}
-
-			this.connects_jump = reader.getUint32();
-
-			this.connections = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.connections.length; i++) {
-				this.connections[i] = new MeshConnection();
-			}
-
+			this.triangles         = TArray(MeshTriangle);
+			this.anim_sequences    = TArray(MeshAnimationSequence);
+			this.connects_jump     = reader.getUint32();
+			this.connections       = TArray(MeshConnection);
 			this.bounding_box_2    = new BoundingBox();
 			this.bounding_sphere_2 = new BoundingSphere();
 			this.vert_links_jump   = reader.getUint32();
@@ -1212,21 +1123,11 @@ window.UTReader = function(arrayBuffer) {
 				this.textures[i] = reader.getObject(reader.getCompactIndex());
 			}
 
-			this.bounding_boxes = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.bounding_boxes.length; i++) {
-				this.bounding_boxes[i] = new BoundingBox();
-			}
-
-			this.bounding_spheres = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.bounding_spheres.length; i++) {
-				this.bounding_spheres[i] = new BoundingSphere();
-			}
-
-			this.frame_verts     = reader.getUint32();
-			this.anim_frames     = reader.getUint32();
-			this.flags_AND       = reader.getUint32();
+			this.bounding_boxes   = TArray(BoundingBox);
+			this.bounding_spheres = TArray(BoundingSphere);
+			this.frame_verts      = reader.getUint32();
+			this.anim_frames      = reader.getUint32();
+			this.flags_AND        = reader.getUint32();
 			this.flags_OR        = reader.getUint32();
 			this.scale           = new Vector();
 			this.origin          = new Vector();
@@ -1264,11 +1165,7 @@ window.UTReader = function(arrayBuffer) {
 				this.face_level[i] = reader.getUint16();
 			}
 
-			this.faces = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.faces.length; i++) {
-				this.faces[i] = new LodMeshFace();
-			}
+			this.faces = TArray(LodMeshFace);
 
 			this.collapse_wedge_thus = new Array(reader.getCompactIndex());
 
@@ -1276,24 +1173,9 @@ window.UTReader = function(arrayBuffer) {
 				this.collapse_wedge_thus[i] = reader.getUint16();
 			}
 
-			this.wedges = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.wedges.length; i++) {
-				this.wedges[i] = new LodMeshWedge();
-			}
-
-			this.materials = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.materials.length; i++) {
-				this.materials[i] = new LodMeshMaterial();
-			}
-
-			this.special_faces = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.special_faces.length; i++) {
-				this.special_faces[i] = new LodMeshFace();
-			}
-
+			this.wedges           = TArray(LodMeshWedge);
+			this.materials        = TArray(LodMeshMaterial);
+			this.special_faces    = TArray(LodMeshFace);
 			this.model_vertices   = reader.getUint32();
 			this.special_vertices = reader.getUint32();
 			this.mesh_scale_max   = reader.getFloat32();
@@ -1317,45 +1199,15 @@ window.UTReader = function(arrayBuffer) {
 		constructor() {
 			super();
 
-			this.ext_wedges = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.ext_wedges.length; i++) {
-				this.ext_wedges[i] = new SkeletalMeshExtWedge();
-			}
-
-			this.points = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.points.length; i++) {
-				this.points[i] = new Vector();
-			}
-
-			this.skeletons = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.skeletons.length; i++) {
-				this.skeletons[i] = new SkeletalMeshSkeleton();
-			}
-
-			this.bone_weight_indices = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.bone_weight_indices.length; i++) {
-				this.bone_weight_indices[i] = new SkeletalMeshBoneWeightIndex();
-			}
-
-			this.bone_weights = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.bone_weights.length; i++) {
-				this.bone_weights[i] = new SkeletalMeshBoneWeight();
-			}
-
-			this.local_points = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.local_points.length; i++) {
-				this.local_points[i] = new Vector();
-			}
-
-			this.skeletal_depth    = reader.getUint32();
-			this.default_animation = reader.getObject(reader.getCompactIndex());
-			this.weapon_bone_index = reader.getUint32();
+			this.ext_wedges          = TArray(SkeletalMeshExtWedge);
+			this.points              = TArray(Vector);
+			this.skeletons           = TArray(SkeletalMeshSkeleton);
+			this.bone_weight_indices = TArray(SkeletalMeshBoneWeightIndex);
+			this.bone_weights        = TArray(SkeletalMeshBoneWeight);
+			this.local_points        = TArray(Vector);
+			this.skeletal_depth      = reader.getUint32();
+			this.default_animation   = reader.getObject(reader.getCompactIndex());
+			this.weapon_bone_index   = reader.getUint32();
 			this.weapon_adjust     = new SkeletalMeshWeaponAdjust();
 		}
 	}
