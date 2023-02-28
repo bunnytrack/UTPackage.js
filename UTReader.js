@@ -704,22 +704,18 @@ window.UTReader = function(arrayBuffer) {
 	class MeshAnimationSequence {
 		constructor() {
 			this.name        = reader.nameTable[reader.getCompactIndex()].name;
-			this.group       = reader.nameTable[reader.getCompactIndex()].name;
-			this.start_frame = reader.getUint32();
-			this.frame_count = reader.getUint32();
+			this.group         = reader.nameTable[reader.getCompactIndex()].name;
+			this.start_frame   = reader.getUint32();
+			this.frame_count   = reader.getUint32();
+			this.notifications = TArray(MeshAnimNotify);
+			this.rate          = reader.getFloat32();
+		}
+	}
 
-			this.functions = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.functions.length; i++) {
-				const f = {};
-
-				f.time     = reader.getUint32();
-				f.function = reader.getCompactIndex();
-
-				this.functions[i] = f;
-			}
-
-			this.rate = reader.getFloat32();
+	class MeshAnimNotify {
+		constructor() {
+			this.time = reader.getUint32();
+			this.function_name = reader.nameTable[reader.getCompactIndex()].name;
 		}
 	}
 
@@ -954,6 +950,13 @@ window.UTReader = function(arrayBuffer) {
 		constructor() {
 			this.key   = reader.getSizedText();
 			this.value = reader.getSizedText();
+		}
+	}
+
+	class FontTexture {
+		constructor() {
+			this.texture    = reader.getObject(reader.getCompactIndex());
+			this.characters = TArray(FontCharacter);
 		}
 	}
 
@@ -1273,20 +1276,7 @@ window.UTReader = function(arrayBuffer) {
 
 	class UFont {
 		constructor() {
-			this.textures = new Array(reader.getUint8());
-
-			for (let i = 0; i < this.textures.length; i++) {
-				const fontTexture = {};
-
-				fontTexture.texture    = reader.getObject(reader.getCompactIndex());
-				fontTexture.characters = new Array(reader.getCompactIndex());
-
-				for (let j = 0; j < fontTexture.characters.length; j++) {
-					fontTexture.characters[j] = new FontCharacter();
-				}
-
-				this.textures[i] = fontTexture;
-			}
+			this.textures = TArray(FontTexture, reader.getUint8());
 		}
 	}
 
