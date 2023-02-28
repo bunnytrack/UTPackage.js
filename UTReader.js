@@ -191,6 +191,10 @@ window.UTReader = function(arrayBuffer) {
 	}
 
 	class ExportTableObject extends UObject {
+		#properties;
+		#propertiesEndOffset;
+		#objectData;
+
 		constructor() {
 			super();
 			this.class_index       = reader.getCompactIndex();
@@ -206,7 +210,12 @@ window.UTReader = function(arrayBuffer) {
 		}
 
 		get properties() {
-			const properties = [];
+			if (this.#properties) {
+				reader.seek(this.#propertiesEndOffset);
+				return this.#properties;
+			}
+
+			const properties = this.#properties = [];
 
 			if (!this.hasData) return properties;
 
@@ -385,6 +394,8 @@ window.UTReader = function(arrayBuffer) {
 				currentPropName = reader.nameTable[reader.getCompactIndex()].name;
 			}
 
+			this.#propertiesEndOffset = reader.offset;
+
 			return properties;
 		}
 
@@ -427,6 +438,8 @@ window.UTReader = function(arrayBuffer) {
 		}
 
 		readData() {
+			if (this.#objectData) return this.#objectData;
+
 			let objectClass;
 
 			switch (this.className) {
@@ -446,7 +459,7 @@ window.UTReader = function(arrayBuffer) {
 				default: return null;
 			}
 
-			return {
+			return this.#objectData = {
 				properties: this.properties,
 				...new objectClass(),
 			}
