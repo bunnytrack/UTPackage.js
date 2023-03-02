@@ -926,42 +926,6 @@ window.UTReader = function(arrayBuffer) {
 		}
 	}
 
-	class LevelURL {
-		constructor() {
-			this.protocol = reader.getSizedText();
-			this.host     = reader.getSizedText();
-			this.map      = reader.getSizedText();
-			this.options  = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.options.length; i++) {
-				this.options[i] = reader.getSizedText();
-			}
-
-			this.portal = reader.getSizedText();
-			this.port   = reader.getUint32();
-			this.valid  = reader.getUint32() > 0;
-		}
-	}
-
-	class ReachSpec {
-		constructor() {
-			this.distance         = reader.getUint32();
-			this.start            = reader.getCompactIndex();
-			this.end              = reader.getCompactIndex();
-			this.collision_radius = reader.getUint32();
-			this.collision_height = reader.getUint32();
-			this.reach_flags      = reader.getUint32();
-			this.pruned           = reader.getUint8() > 0;
-		}
-	}
-
-	class LevelMap {
-		constructor() {
-			this.key   = reader.getSizedText();
-			this.value = reader.getSizedText();
-		}
-	}
-
 	class FontTexture {
 		constructor() {
 			this.texture    = reader.getObject(reader.getCompactIndex());
@@ -1000,11 +964,13 @@ window.UTReader = function(arrayBuffer) {
 		constructor() {
 			super();
 
+			const NUM_LEVEL_TEXT_BLOCKS = 16;
+
 			this.model         = reader.getObject(reader.getCompactIndex());
 			this.reach_specs   = TArray(ReachSpec);
 			this.approx_time   = reader.getFloat32();
 			this.first_deleted = reader.getCompactIndex();
-			this.text_blocks   = new Array(16);
+			this.text_blocks   = new Array(NUM_LEVEL_TEXT_BLOCKS);
 
 			for (let i = 0; i < this.text_blocks.length; i++) {
 				this.text_blocks[i] = reader.getObject(reader.getCompactIndex());
@@ -1013,6 +979,42 @@ window.UTReader = function(arrayBuffer) {
 			if (reader.header.version > 62) {
 				this.travel_info = TArray(LevelMap);
 			}
+		}
+	}
+
+	class LevelURL {
+		constructor() {
+			this.protocol = reader.getSizedText();
+			this.host     = reader.getSizedText();
+			this.map      = reader.getSizedText();
+			this.options  = new Array(reader.getCompactIndex());
+
+			for (let i = 0; i < this.options.length; i++) {
+				this.options[i] = reader.getSizedText();
+			}
+
+			this.portal = reader.getSizedText();
+			this.port   = reader.getUint32();
+			this.valid  = reader.getUint32() > 0;
+		}
+	}
+
+	class ReachSpec {
+		constructor() {
+			this.distance         = reader.getUint32();
+			this.start            = reader.getCompactIndex();
+			this.end              = reader.getCompactIndex();
+			this.collision_radius = reader.getUint32();
+			this.collision_height = reader.getUint32();
+			this.reach_flags      = reader.getUint32();
+			this.pruned           = reader.getUint8() > 0;
+		}
+	}
+
+	class LevelMap {
+		constructor() {
+			this.key   = reader.getSizedText();
+			this.value = reader.getSizedText();
 		}
 	}
 
@@ -1233,22 +1235,24 @@ window.UTReader = function(arrayBuffer) {
 			this.num_frames    = reader.getInt32();
 			this.num_sequences = reader.getInt32();
 			this.num_skins     = reader.getInt32();
-			this.root_joint    = reader.getInt32();
-			this.meshes        = TArray(RMesh);
-			this.joints        = TArray(RJoint);
-			this.anim_seqs     = TArray(RSkelAnimSeq);
-			this.frames        = TArray(RAnimFrame);
-			this.pos_offset    = new Vector();
-			this.rot_offset    = new Rotator();
+			this.root_joint     = reader.getInt32();
+			this.meshes         = TArray(RMesh);
+			this.joints         = TArray(RJoint);
+			this.anim_sequences = TArray(RSkelAnimSeq);
+			this.frames         = TArray(RAnimFrame);
+			this.pos_offset     = new Vector();
+			this.rot_offset     = new Rotator();
 		}
 	}
 
 	class RMesh {
 		constructor() {
+			const NUM_POLYGROUPS = 16;
+
 			this.num_verts = reader.getInt32();
 			this.num_tris  = reader.getInt32();
-			this.tris      = TArray(RTriangle);
-			this.verts     = TArray(RVertex);
+			this.triangles = TArray(RTriangle);
+			this.vertices  = TArray(RVertex);
 			this.dec_count = reader.getInt32();
 
 			this.dec = new Array(reader.getCompactIndex());
@@ -1256,8 +1260,6 @@ window.UTReader = function(arrayBuffer) {
 			for (let i = 0; i < this.dec.length; i++) {
 				this.dec[i] = reader.getInt8();
 			}
-
-			const NUM_POLYGROUPS = 16;
 
 			this.group_flags = new Array(NUM_POLYGROUPS);
 			this.poly_group_skin_names = new Array(NUM_POLYGROUPS);
@@ -1336,23 +1338,9 @@ window.UTReader = function(arrayBuffer) {
 
 	class UAnimation {
 		constructor() {
-			this.bones = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.bones.length; i++) {
-				this.bones[i] = new BoneReference();
-			}
-
-			this.movements = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.movements.length; i++) {
-				this.movements[i] = new BoneMovement();
-			}
-
-			this.animation_sequences = new Array(reader.getCompactIndex());
-
-			for (let i = 0; i < this.animation_sequences.length; i++) {
-				this.animation_sequences[i] = new MeshAnimationSequence();
-			}
+			this.bones = TArray(BoneReference);
+			this.movements = TArray(BoneMovement);
+			this.animation_sequences = TArray(MeshAnimationSequence);
 		}
 	}
 
@@ -1804,6 +1792,7 @@ window.UTReader = function(arrayBuffer) {
 		"Mesh",
 		"LodMesh",
 		"SkeletalMesh",
+		"SkelModel",
 	];
 
 	this.enumBumpType = [
@@ -1977,23 +1966,11 @@ window.UTReader = function(arrayBuffer) {
 	}
 
 	this.getExportObjectByName = function(objectName) {
-		for (const tableEntry of reader.exportTable) {
-			if (tableEntry.objectName === objectName) {
-				return tableEntry;
-			}
-		}
-
-		return null;
+		return reader.exportTable.find(item => item.objectName === objectName) || null;
 	}
 
 	this.getImportObjectByName = function(objectName) {
-		for (const tableEntry of reader.importTable) {
-			if (tableEntry.objectName === objectName) {
-				return tableEntry;
-			}
-		}
-
-		return null;
+		return reader.importTable.find(item => item.objectName === objectName) || null;
 	}
 
 	this.getExportObjectsByName = function(objectName) {
@@ -2012,46 +1989,42 @@ window.UTReader = function(arrayBuffer) {
 		return reader.exportTable.filter(item => item.className === objectClass);
 	}
 
-	this.getTextureObjects = function() {
-		return reader.getObjectsByClass("Texture");
-	}
-
-	this.getSoundObjects = function() {
-		return reader.getObjectsByClass("Sound");
+	this.getLevelObjects = function() {
+		return reader.getObjectsByClass("Level");
 	}
 
 	this.getMusicObjects = function() {
 		return reader.getObjectsByClass("Music");
 	}
 
+	this.getSoundObjects = function() {
+		return reader.getObjectsByClass("Sound");
+	}
+
 	this.getTextBufferObjects = function() {
 		return reader.getObjectsByClass("TextBuffer");
 	}
 
-	this.getLevelObjects = function() {
-		return reader.getObjectsByClass("Level");
-	}
-
-	this.getAllMeshObjects = function() {
-		return reader.exportTable.filter(item => reader.meshClasses.includes(item.className));
+	this.getTextureObjects = function() {
+		return reader.getObjectsByClass("Texture");
 	}
 
 	this.getAllBrushObjects = function() {
 		return reader.exportTable.filter(item => reader.brushClasses.includes(item.className));
 	}
 
+	this.getAllMeshObjects = function() {
+		return reader.exportTable.filter(item => reader.meshClasses.includes(item.className));
+	}
+
 	this.getBrushData = function(brushObject) {
-		const data = {};
+		const data = {
+			brush: brushObject,
+			model: {},
+			polys: {},
+		}
 
-		data.brush = {};
-		data.model = {};
-		data.polys = {};
-
-		// Brush
-		data.brush.object = brushObject;
-		data.brush.properties = brushObject.properties;
-
-		// Model
+		// A brush object's "Brush" property is an object reference to a Model
 		const brushProp = brushObject.getProp("brush");
 
 		if (brushProp) {
@@ -2074,36 +2047,8 @@ window.UTReader = function(arrayBuffer) {
 		return data;
 	}
 
-	this.getAllMeshData = function() {
-		const allMeshData = [];
-		const meshObjects = reader.getAllMeshObjects();
-
-		for (const mesh of meshObjects) {
-			allMeshData.push(reader.getMeshData(mesh));
-		}
-
-		return allMeshData;
-	}
-
 	this.getAllBrushData = function() {
-		const allBrushData = [];
-		const brushObjects = reader.getAllBrushObjects();
-
-		for (const brush of brushObjects) {
-			allBrushData.push(reader.getBrushData(brush));
-		}
-
-		return allBrushData;
-	}
-
-	this.getTextBuffer = function(textBufferObject) {
-		const textBuffer = textBufferObject.readData();
-
-		if (textBufferObject.isInPackage) {
-			textBuffer.package = textBufferObject.packageName;
-		}
-
-		return textBuffer;
+		return reader.getAllBrushObjects().map(reader.getBrushData);
 	}
 
 	this.getTextureInfo = function(textureObject) {
@@ -2139,14 +2084,6 @@ window.UTReader = function(arrayBuffer) {
 			ungrouped : ungrouped,
 			length    : total,
 		}
-	}
-
-	this.getMusic = function(musicObject) {
-		return new UMusic(musicObject);
-	}
-
-	this.getSound = function(soundObject) {
-		return new USound(soundObject);
 	}
 
 	this.getSounds = function() {
@@ -2254,7 +2191,7 @@ window.UTReader = function(arrayBuffer) {
 				imageData.data[i++] = pixel.r;
 				imageData.data[i++] = pixel.g;
 				imageData.data[i++] = pixel.b;
-				imageData.data[i++] = 0xFF; // See explanation in textureToCanvas()
+				imageData.data[i++] = 0xFF;
 			}
 
 			context.putImageData(imageData, 0, 0);
@@ -2268,6 +2205,9 @@ window.UTReader = function(arrayBuffer) {
 	this.textureToCanvas = function(textureObject) {
 		const textureData = textureObject.readData();
 		const [mipMap, ...rest] = textureData.mip_maps;
+
+		// TODO: handle other texture formats
+		const format = textureObject.getProp("format")?.value;
 
 		const paletteProp = textureObject.getProp("palette");
 		const paletteObject = reader.getObject(paletteProp.value);
@@ -2309,21 +2249,15 @@ window.UTReader = function(arrayBuffer) {
 		const screenshotObjects = reader.getTextureObjects().filter(item => screenshotRegEx.test(item.objectName));
 
 		if (screenshotObjects.length > 0) {
-			const tempScreenshots = screenshotObjects.map(item => {
-				return {
-					canvas: reader.textureToCanvas(item),
-					name: item.objectName,
-				}
-			})
+			const tempScreenshots = screenshotObjects.map(item => ({
+				canvas: reader.textureToCanvas(item),
+				num: Number(item.objectName.substring("Screenshot".length)),
+			}));
 
 			// Sort numerically as name table doesn't guarantee order
-			tempScreenshots.sort((a, b) => {
-				const numA = Number(a.name.substring("Screenshot".length));
-				const numB = Number(b.name.substring("Screenshot".length));
-				return numA - numB;
-			})
+			tempScreenshots.sort(({ num: a }, { num: b }) => a - b);
 
-			tempScreenshots.forEach(item => screenshots.push(item.canvas));
+			screenshots.push(...tempScreenshots.map(item => item.canvas));
 		} else {
 			// Officially, the map screenshot should be a texture named "Screenshot",
 			// but sometimes it's set to a different texture (e.g. CTF-BT-Slaughter).
@@ -2349,28 +2283,20 @@ window.UTReader = function(arrayBuffer) {
 	}
 
 	this.getLevelSummary = function(allProperties = false) {
-		const levelSummary    = {};
+		const levelSummary = {};
 		const levelInfo = reader.getExportObjectByName("LevelInfo0");
+		const meaningfulProperties = ["Author", "IdealPlayerCount", "LevelEnterText", "Song", "Title"];
+		const valueIsObjIndex = ["Song", "DefaultGameType", "Summary", "NavigationPointList", "Level"];
 
-		if (levelInfo) {
-			// If allProperties == false, only include these
-			const meaningfulProperties = ["Author", "IdealPlayerCount", "LevelEnterText", "Screenshot", "Song", "Title"];
+		levelInfo?.properties.forEach(prop => {
+			if (allProperties || meaningfulProperties.includes(prop.name)) {
+				const propVal = valueIsObjIndex.includes(prop.name)
+					? reader.getObject(prop.value).uppermostPackageObjectName
+					: prop.value;
 
-			// Lookup these properties in the name table
-			const tableLookup = ["Song", "DefaultGameType", "Summary", "NavigationPointList", "Level"];
-
-			for (const prop of levelInfo.properties) {
-				if (allProperties || meaningfulProperties.includes(prop.name)) {
-					if (tableLookup.includes(prop.name)) {
-						levelSummary[prop.name] = reader.getObject(prop.value).name;
-					} else {
-						levelSummary[prop.name] = prop.value;
-					}
-				}
+				levelSummary[prop.name] = propVal;
 			}
-
-			levelSummary["Screenshot"] = Object.keys(levelSummary).includes("Screenshot");
-		}
+		})
 
 		return levelSummary;
 	}
@@ -2382,7 +2308,7 @@ window.UTReader = function(arrayBuffer) {
 		const { Song: levelMusic } = reader.getLevelSummary();
 
 		for (const tableEntry of reader.importTable) {
-			if (tableEntry.className === "Package" && tableEntry.package_index === 0) {
+			if (tableEntry.className === "Package" && !tableEntry.isInPackage) {
 				const dependency = {
 					name: tableEntry.objectName,
 				}
