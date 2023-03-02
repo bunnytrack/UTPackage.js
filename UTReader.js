@@ -116,6 +116,10 @@ window.UTReader = function(arrayBuffer) {
 		return signed ? -value : value;
 	}
 
+	this.getName = function(index) {
+		return reader.nameTable[index ?? reader.getCompactIndex()].name;
+	}
+
 	// Gets text where the first byte specifies the size
 	this.getSizedText = function(offsetAdjust) {
 		const size  = reader.getUint8();
@@ -160,7 +164,7 @@ window.UTReader = function(arrayBuffer) {
 	 */
 	class UObject {
 		get objectName() {
-			return reader.nameTable[this.object_name_index].name;
+			return reader.getName(this.object_name_index);
 		}
 
 		get packageObject() {
@@ -228,7 +232,7 @@ window.UTReader = function(arrayBuffer) {
 			}
 
 			// The first byte of property block is a name table index
-			let currentPropName = reader.nameTable[reader.getCompactIndex()].name;
+			let currentPropName = reader.getName();
 
 			while (currentPropName.toLowerCase() !== "none") {
 				const prop = {};
@@ -241,7 +245,7 @@ window.UTReader = function(arrayBuffer) {
 
 				// If the property type is a struct then the struct name follows
 				if (prop.type === "Struct") {
-					prop.subtype = reader.nameTable[reader.getCompactIndex()].name;
+					prop.subtype = reader.getName();
 				}
 
 				/**
@@ -338,7 +342,7 @@ window.UTReader = function(arrayBuffer) {
 					break;
 
 					case "Name":
-						prop.value = reader.nameTable[reader.getCompactIndex()].name;
+						prop.value = reader.getName();
 					break;
 
 					// Handled later
@@ -391,7 +395,7 @@ window.UTReader = function(arrayBuffer) {
 
 				properties.push(prop);
 
-				currentPropName = reader.nameTable[reader.getCompactIndex()].name;
+				currentPropName = reader.getName();
 			}
 
 			this.#propertiesEndOffset = reader.offset;
@@ -477,11 +481,11 @@ window.UTReader = function(arrayBuffer) {
 		}
 
 		get classPackageName() {
-			return reader.nameTable[this.class_package_index].name;
+			return reader.getName(this.class_package_index);
 		}
 
 		get className() {
-			return reader.nameTable[this.class_name_index].name;
+			return reader.getName(this.class_name_index);
 		}
 
 		get table() {
@@ -704,8 +708,8 @@ window.UTReader = function(arrayBuffer) {
 
 	class MeshAnimationSequence {
 		constructor() {
-			this.name        = reader.nameTable[reader.getCompactIndex()].name;
-			this.group         = reader.nameTable[reader.getCompactIndex()].name;
+			this.name          = reader.getName();
+			this.group         = reader.getName();
 			this.start_frame   = reader.getUint32();
 			this.frame_count   = reader.getUint32();
 			this.notifications = TArray(MeshAnimNotify);
@@ -716,7 +720,7 @@ window.UTReader = function(arrayBuffer) {
 	class MeshAnimNotify {
 		constructor() {
 			this.time = reader.getUint32();
-			this.function_name = reader.nameTable[reader.getCompactIndex()].name;
+			this.function_name = reader.getName();
 		}
 	}
 
@@ -762,7 +766,7 @@ window.UTReader = function(arrayBuffer) {
 
 	class SkeletalMeshSkeleton {
 		constructor() {
-			this.name           = reader.nameTable[reader.getCompactIndex()].name;
+			this.name           = reader.getName();
 			this.flags          = reader.getUint32();
 			this.orientation    = new Quaternion();
 			this.position       = new Vector();
@@ -802,7 +806,7 @@ window.UTReader = function(arrayBuffer) {
 
 	class BoneReference {
 		constructor() {
-			this.name         = reader.nameTable[reader.getCompactIndex()].name;
+			this.name         = reader.getName();
 			this.flags        = reader.getUint32();
 			this.parent_index = reader.getUint32();
 		}
@@ -1266,7 +1270,7 @@ window.UTReader = function(arrayBuffer) {
 
 			for (let i = 0; i < NUM_POLYGROUPS; i++) {
 				this.group_flags[i] = reader.getInt32();
-				this.poly_group_skin_names[i] = reader.nameTable[reader.getCompactIndex()].name;
+				this.poly_group_skin_names[i] = reader.getName();
 			}
 		}
 	}
@@ -1307,7 +1311,7 @@ window.UTReader = function(arrayBuffer) {
 				this.children[i] = reader.getInt32();
 			}
 
-			this.name = reader.nameTable[reader.getCompactIndex()].name;
+			this.name = reader.getName();
 			this.jointgroup = reader.getInt32();
 			this.flags = reader.getInt32();
 			this.baserot = new Rotator();
@@ -1330,7 +1334,7 @@ window.UTReader = function(arrayBuffer) {
 	class RAnimFrame {
 		constructor() {
 			this.sequence_id = reader.getInt16();
-			this.event = reader.nameTable[reader.getCompactIndex()].name;
+			this.event = reader.getName();
 			this.bounds = new BoundingBox();
 			this.joint_anim = TArray(JointState);
 		}
@@ -1348,7 +1352,7 @@ window.UTReader = function(arrayBuffer) {
 		constructor() {
 			// If the package itself only contains music (.umx) then the first name table entry is the format.
 			// This is not always the case if the music is embedded in a map, for example.
-			this.format          = reader.nameTable[reader.getCompactIndex()].name;
+			this.format          = reader.getName();
 			this.data_end_offset = reader.getUint32();
 			this.size            = reader.getCompactIndex(); // includes null padding?
 			this.audio_data      = reader.dataView.buffer.slice(reader.offset, reader.offset + this.size);
@@ -1357,7 +1361,7 @@ window.UTReader = function(arrayBuffer) {
 
 	class USound {
 		constructor() {
-			this.format = reader.nameTable[reader.getCompactIndex()].name;
+			this.format = reader.getName();
 
 			if (reader.header.version >= 63) {
 				this.next_object_offset = reader.getUint32();
