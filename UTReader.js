@@ -75,6 +75,32 @@ window.UTReader = function(arrayBuffer) {
 	// or more typically, by reading a compact index.
 	const Name = (index) => reader.nameTable[index ?? CompactIndex()].name;
 
+	// Return a "templated" array of a given class or byte function
+	const TArray = (type, size) => {
+		const array = new Array(size ?? CompactIndex());
+
+		switch (type.name) {
+			case "Int8":
+			case "Uint8":
+			case "Int16":
+			case "Uint16":
+			case "Int32":
+			case "Uint32":
+			case "Float32":
+			case "BigInt64":
+			case "BigUint64":
+			case "CompactIndex":
+			case "Name":
+				for (let i = 0; i < array.length; i++) array[i] = type();
+			break;
+			default:
+				for (let i = 0; i < array.length; i++) array[i] = new type();
+			break;
+		}
+
+		return array;
+	}
+
 	// Gets text where the first byte specifies the size
 	this.getSizedText = function(offsetAdjust) {
 		const size  = Uint8();
@@ -449,15 +475,6 @@ window.UTReader = function(arrayBuffer) {
 	}
 
 	/**
-	 * Templated array
-	 */
-	const TArray = (type, size) => {
-		const array = new Array(size ?? CompactIndex());
-		for (let i = 0; i < array.length; i++) array[i] = new type();
-		return array;
-	}
-
-	/**
 	 * UMOD file data
 	 */
 	class UMODFile {
@@ -577,18 +594,9 @@ window.UTReader = function(arrayBuffer) {
 			this.i_plane           = CompactIndex();
 			this.i_collision_bound = CompactIndex();
 			this.i_render_bound    = CompactIndex();
-
-			this.i_zone = [
-				CompactIndex(),
-				CompactIndex(),
-			];
-
-			this.vertices = Uint8();
-
-			this.i_leaf = [
-				Uint32(),
-				Uint32(),
-			];
+			this.i_zone            = TArray(CompactIndex, 2);
+			this.vertices          = Uint8();
+			this.i_leaf            = TArray(Uint32, 2);
 		}
 	}
 
@@ -770,31 +778,21 @@ window.UTReader = function(arrayBuffer) {
 	class BoneMovement {
 		constructor() {
 			this.root_speed_3d = new Vector();
-			this.track_time    = Float32();
-			this.start_bone    = Uint32();
-			this.flags         = Uint32();
-			this.bones         = new Array(CompactIndex());
-
-			for (let i = 0; i < this.bones.length; i++) {
-				this.bones[i] = Uint32();
-			}
-
+			this.track_time       = Float32();
+			this.start_bone       = Uint32();
+			this.flags            = Uint32();
+			this.bones            = TArray(Uint32);
 			this.animation_tracks = TArray(AnimationTrack);
-			this.root_track = new AnimationTrack();
+			this.root_track       = new AnimationTrack();
 		}
 	}
 
 	class AnimationTrack {
 		constructor() {
-			this.flags = Uint32();
+			this.flags           = Uint32();
 			this.key_quaternions = TArray(Quaternion);
-			this.key_positions = TArray(Vector);
-
-			this.key_time = new Array(CompactIndex());
-
-			for (let i = 0; i < this.key_time.length; i++) {
-				this.key_time[i] = Float32();
-			}
+			this.key_positions   = TArray(Vector);
+			this.key_time        = TArray(Float32);
 		}
 	}
 
@@ -846,16 +844,10 @@ window.UTReader = function(arrayBuffer) {
 			this.normal       = new Vector();
 			this.texture_u    = new Vector();
 			this.texture_v    = new Vector();
-
-			this.vertices = new Array(this.vertex_count);
-
-			for (let i = 0; i < this.vertices.length; i++) {
-				this.vertices[i] = new Vector();
-			}
-
-			this.flags      = reader.getPolyFlags(Uint32());
-			this.actor      = CompactIndex();
-			this.texture    = CompactIndex();
+			this.vertices     = TArray(Vector, this.vertex_count);
+			this.flags        = reader.getPolyFlags(Uint32());
+			this.actor        = CompactIndex();
+			this.texture      = CompactIndex();
 			this.item_name  = CompactIndex();
 			this.link       = CompactIndex();
 			this.brush_poly = CompactIndex();
@@ -1028,29 +1020,13 @@ window.UTReader = function(arrayBuffer) {
 				this.zones            = TArray(Zone, this.num_zones);
 			}
 
-			this.polys = CompactIndex();
-			this.light_map = TArray(LightMap);
-			this.light_bits = new Array(CompactIndex());
-
-			for (let i = 0; i < this.light_bits.length; i++) {
-				this.light_bits[i] = Uint8();
-			}
-
-			this.bounds = TArray(BoundingBox);
-
-			this.leaf_hulls = new Array(CompactIndex());
-
-			for (let i = 0; i < this.leaf_hulls.length; i++) {
-				this.leaf_hulls[i] = Int32();
-			}
-
-			this.leaves = TArray(BspLeaf);
-
-			this.lights = new Array(CompactIndex());
-
-			for (let i = 0; i < this.lights.length; i++) {
-				this.lights[i] = CompactIndex();
-			}
+			this.polys      = CompactIndex();
+			this.light_map  = TArray(LightMap);
+			this.light_bits = TArray(Uint8);
+			this.bounds     = TArray(BoundingBox);
+			this.leaf_hulls = TArray(Int32);
+			this.leaves     = TArray(BspLeaf);
+			this.lights     = TArray(CompactIndex);
 
 			if (reader.header.version <= 61) {
 				this.leaf_zone = CompactIndex();
@@ -1083,12 +1059,7 @@ window.UTReader = function(arrayBuffer) {
 			this.bounding_box_2    = new BoundingBox();
 			this.bounding_sphere_2 = new BoundingSphere();
 			this.vert_links_jump   = Uint32();
-
-			this.vert_links = new Array(CompactIndex());
-
-			for (let i = 0; i < this.vert_links.length; i++) {
-				this.vert_links[i] = Uint32();
-			}
+			this.vert_links        = TArray(Uint32);
 
 			this.textures = new Array(CompactIndex());
 
@@ -1109,15 +1080,11 @@ window.UTReader = function(arrayBuffer) {
 			this.cur_vertex       = Uint32();
 
 			if (reader.header.version === 65) {
-				this.texture_lod = [Float32()];
+				this.texture_lod = TArray(Float32, 1);
 			}
 
 			else if (reader.header.version >= 66) {
-				this.texture_lod = new Array(CompactIndex());
-
-				for (let i = 0; i < this.texture_lod.length; i++) {
-					this.texture_lod[i] = Float32();
-				}
+				this.texture_lod = TArray(Float32);
 			}
 		}
 	}
@@ -1126,45 +1093,23 @@ window.UTReader = function(arrayBuffer) {
 		constructor() {
 			super();
 
-			this.collapse_point_thus = new Array(CompactIndex());
-
-			for (let i = 0; i < this.collapse_point_thus.length; i++) {
-				this.collapse_point_thus[i] = Uint16();
-			}
-
-			this.face_level = new Array(CompactIndex());
-
-			for (let i = 0; i < this.face_level.length; i++) {
-				this.face_level[i] = Uint16();
-			}
-
-			this.faces = TArray(LodMeshFace);
-
-			this.collapse_wedge_thus = new Array(CompactIndex());
-
-			for (let i = 0; i < this.collapse_wedge_thus.length; i++) {
-				this.collapse_wedge_thus[i] = Uint16();
-			}
-
-			this.wedges           = TArray(LodMeshWedge);
-			this.materials        = TArray(LodMeshMaterial);
-			this.special_faces    = TArray(LodMeshFace);
+			this.collapse_point_thus = TArray(Uint16);
+			this.face_level          = TArray(Uint16);
+			this.faces               = TArray(LodMeshFace);
+			this.collapse_wedge_thus = TArray(Uint16);
+			this.wedges              = TArray(LodMeshWedge);
+			this.materials           = TArray(LodMeshMaterial);
+			this.special_faces       = TArray(LodMeshFace);
 			this.model_vertices   = Uint32();
 			this.special_vertices = Uint32();
 			this.mesh_scale_max   = Float32();
 			this.lod_hysteresis   = Float32();
 			this.lod_strength     = Float32();
-			this.lod_min_verts    = Uint32();
-			this.lod_morph        = Float32();
-			this.lod_z_displace   = Float32();
-
-			this.remap_anim_vertices = new Array(CompactIndex());
-
-			for (let i = 0; i < this.remap_anim_vertices.length; i++) {
-				this.remap_anim_vertices[i] = Uint16();
-			}
-
-			this.old_frame_verts = Uint32();
+			this.lod_min_verts       = Uint32();
+			this.lod_morph           = Float32();
+			this.lod_z_displace      = Float32();
+			this.remap_anim_vertices = TArray(Uint16);
+			this.old_frame_verts     = Uint32();
 		}
 	}
 
@@ -1210,17 +1155,11 @@ window.UTReader = function(arrayBuffer) {
 
 			this.num_verts = Int32();
 			this.num_tris  = Int32();
-			this.triangles = TArray(RTriangle);
-			this.vertices  = TArray(RVertex);
-			this.dec_count = Int32();
-
-			this.dec = new Array(CompactIndex());
-
-			for (let i = 0; i < this.dec.length; i++) {
-				this.dec[i] = Int8();
-			}
-
-			this.group_flags = new Array(NUM_POLYGROUPS);
+			this.triangles             = TArray(RTriangle);
+			this.vertices              = TArray(RVertex);
+			this.dec_count             = Int32();
+			this.dec                   = TArray(Int8);
+			this.group_flags           = new Array(NUM_POLYGROUPS);
 			this.poly_group_skin_names = new Array(NUM_POLYGROUPS);
 
 			for (let i = 0; i < NUM_POLYGROUPS; i++) {
@@ -1259,16 +1198,11 @@ window.UTReader = function(arrayBuffer) {
 		constructor() {
 			const MAX_CHILD_JOINTS = 4;
 
-			this.parent = Int32();
-			this.children = new Array(MAX_CHILD_JOINTS);
-
-			for (let i = 0; i < this.children.length; i++) {
-				this.children[i] = Int32();
-			}
-
-			this.name = Name();
+			this.parent     = Int32();
+			this.children   = TArray(Int32, MAX_CHILD_JOINTS);
+			this.name       = Name();
 			this.jointgroup = Int32();
-			this.flags = Int32();
+			this.flags      = Int32();
 			this.baserot = new Rotator();
 			this.planes = TArray(Plane, 6);
 		}
@@ -1278,11 +1212,7 @@ window.UTReader = function(arrayBuffer) {
 		constructor() {
 			super();
 
-			this.anim_data = new Array(CompactIndex());
-
-			for (let i = 0; i < this.anim_data.length; i++) {
-				this.anim_data[i] = Int8();
-			}
+			this.anim_data = TArray(Int8);
 		}
 	}
 
