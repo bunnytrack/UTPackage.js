@@ -44,27 +44,26 @@ window.UTReader = function(arrayBuffer) {
 	const CompactIndex = () => {
 		let value = Uint8();
 
-		// Bit 7 = if set, result will be a negative number
+		// Bit 8 = if set, result will be a negative number
 		const isNegative = value & 0b10000000;
 
-		// Bit 6 = if set, value continues into next byte
+		// Bit 7 = if set, value continues into next byte
 		let readNextByte = value & 0b01000000;
 
-		// Bits 0-5 = actual value
+		// Bits 1-6 = actual value
 		value = value & 0b00111111;
 
-		for (let byteNum = 2, shiftAmt = 6; readNextByte; byteNum++) {
+		for (let byteNum = 2, shiftAmt = 6; readNextByte; byteNum++, shiftAmt += 7) {
 			const byte = Uint8();
 
-			// Bit 7 is now the continuation flag, so read bits 0-6 for the value.
-			// If the value spans 5 bytes, then only read bits 0-4 of the final byte
+			// Bit 8 is now the continuation flag, so read bits 1-7 for the value.
+			// If the value spans 5 bytes, then only read bits 1-5 of the final byte
 			// to make up a total of 32 bits (the most a compact index can store).
 			const valueBitMask = byteNum < 5 ? 0b01111111 : 0b00011111;
 
 			// JavaScript converts to signed integers when shifting left,
 			// so use zero-fill right shift to convert back to unsigned.
 			value = ((byte & valueBitMask) << shiftAmt | value) >>> 0;
-			shiftAmt += 7;
 			readNextByte = byte & 0b10000000;
 		}
 
@@ -471,18 +470,6 @@ window.UTReader = function(arrayBuffer) {
 
 		get table() {
 			return "import";
-		}
-	}
-
-	/**
-	 * UMOD file data
-	 */
-	class UMODFile {
-		constructor() {
-			this.name   = reader.getSizedText();
-			this.offset = Uint32();
-			this.size   = Uint32();
-			this.flags  = Uint32();
 		}
 	}
 
@@ -1906,7 +1893,7 @@ window.UTReader = function(arrayBuffer) {
 		return reader.exportTable.filter(item => reader.meshClasses.includes(item.className));
 	}
 
-	this.getBrushData = function(brushObject) {
+	this.getBrushModelPolys = function(brushObject) {
 		const data = {
 			brush: brushObject,
 			model: {},
@@ -1937,7 +1924,7 @@ window.UTReader = function(arrayBuffer) {
 	}
 
 	this.getAllBrushData = function() {
-		return reader.getAllBrushObjects().map(reader.getBrushData);
+		return reader.getAllBrushObjects().map(reader.getBrushModelPolys);
 	}
 
 	this.getTextureInfo = function(textureObject) {
