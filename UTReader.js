@@ -2047,35 +2047,42 @@ window.UTReader = function(arrayBuffer) {
 		return polyFlags;
 	}
 
-	this.getPaletteCanvas = function(textureObject, callback) {
-		const paletteProp = textureObject.getProp("palette");
-		const paletteObject = reader.getObject(paletteProp.value);
-		const paletteData = paletteObject.readData();
-
+	this.createCanvas = function(width, height, palette, mipMap) {
 		const canvas  = document.createElement("canvas");
 		const context = canvas.getContext("2d");
 
-		canvas.width  = 16;
-		canvas.height = 16;
+		canvas.width  = width;
+		canvas.height = height;
 
 		const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
 
-		createImageBitmap(imageData).then(function(imageBitmap) {
-			let i = 0;
+		let i = 0;
 
-			for (const pixel of paletteData.colours) {
+		if (mipMap) {
+			for (const pixel of mipMap.data) {
+				const colour = palette.colours[pixel];
+
+				imageData.data[i++] = colour.r;
+				imageData.data[i++] = colour.g;
+				imageData.data[i++] = colour.b;
+				// imageData.data[i++] = colour.a;
+
+				// Newer versions use alpha channel, but this doesn't seem to be
+				// consistent in older packages, e.g. Faces.utx has alpha set to 0
+				imageData.data[i++] = 0xFF;
+			}
+		} else {
+			for (const pixel of palette.colours) {
 				imageData.data[i++] = pixel.r;
 				imageData.data[i++] = pixel.g;
 				imageData.data[i++] = pixel.b;
 				imageData.data[i++] = 0xFF;
 			}
+		}
 
-			context.putImageData(imageData, 0, 0);
+		context.putImageData(imageData, 0, 0);
 
-			callback(canvas, paletteData);
-		})
-
-		return paletteData;
+		return canvas;
 	}
 
 	this.textureToCanvas = function(textureObject) {
@@ -2089,35 +2096,14 @@ window.UTReader = function(arrayBuffer) {
 		const paletteObject = reader.getObject(paletteProp.value);
 		const paletteData = paletteObject.readData();
 
-		const canvas  = document.createElement("canvas");
-		const context = canvas.getContext("2d");
-
-		canvas.width  = mipMap.width;
-		canvas.height = mipMap.height;
-
-		const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-
-		let i = 0;
-
-		for (const pixel of mipMap.data) {
-			const colour = paletteData.colours[pixel];
-
-			imageData.data[i++] = colour.r;
-			imageData.data[i++] = colour.g;
-				imageData.data[i++] = colour.b;
-				// imageData.data[i++] = colour.a;
-
-				// Newer versions use alpha channel, but this doesn't seem to be
-				// consistent in older packages, e.g. Faces.utx has alpha set to 0
-				imageData.data[i++] = 0xFF;
-			}
-
-		context.putImageData(imageData, 0, 0);
-
-		return canvas;
+		return reader.createCanvas(mipMap.width, mipMap.height, paletteData, mipMap);
 	}
 
-	this.getScreenshot = function() {
+	this.getPaletteCanvas = function(paletteObject) {
+		return reader.createCanvas(16, 16, paletteObject.readData());
+	}
+
+	this.getLevelScreenshots = function() {
 		// Multiple screenshots can be embedded to create a montage effect by
 		// consecutively naming MyLevel textures "Screenshot1", "Screenshot2", etc.
 		const screenshots = [];
